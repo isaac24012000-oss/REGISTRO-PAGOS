@@ -535,8 +535,34 @@ elif opcion == "📋 Ver Registros":
             st.metric("Total de Registros", len(registros))
         
         with col2:
-            if st.button("🗑️ Limpiar Registros", use_container_width=True):
-                st.warning("⚠️ Esta función estará disponible en futuras versiones")
+            st.metric("IDs de Registros", f"{', '.join(map(str, [r[0] for r in registros]))}")
+        
+        st.divider()
+        st.subheader("🗑️ Eliminar Registro Individual")
+        
+        col_elim1, col_elim2 = st.columns([3, 1])
+        
+        with col_elim1:
+            id_registro = st.number_input(
+                "Ingresa el ID del registro a eliminar:",
+                min_value=1,
+                value=None,
+                help="Puedes ver el ID en la primera columna de la tabla"
+            )
+        
+        with col_elim2:
+            st.markdown("")
+            st.markdown("")
+            if st.button("❌ Eliminar", use_container_width=True):
+                if id_registro:
+                    try:
+                        eliminar_registro(int(id_registro))
+                        st.success(f"✓ Registro ID {id_registro} eliminado correctamente")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Error al eliminar: {e}")
+                else:
+                    st.warning("⚠️ Por favor ingresa un ID válido")
     else:
         st.info("ℹ️ No hay registros en la fecha seleccionada")
 
