@@ -476,12 +476,12 @@ elif opcion == "📝 Registrar Pago":
                     
                     st.info(f"👤 Asesor: {asesor} | 📊 Campaña: {campaña}")
                     
-                    # Botón para nuevo registro
-                    st.markdown("---")
-                    if st.button("➕ Registrar Otro Pago", use_container_width=True):
-                        st.session_state.ruc_registrado = None
-                        st.session_state.ruc_info_encontrada = None
-                        st.rerun()
+                    # Limpiar formulario para nuevo registro
+                    import time
+                    time.sleep(2)  # Mostrar el resumen por 2 segundos
+                    st.session_state.ruc_registrado = None
+                    st.session_state.ruc_info_encontrada = None
+                    st.rerun()
                 
                 except Exception as e:
                     st.error(f"❌ Error al registrar: {str(e)}")
