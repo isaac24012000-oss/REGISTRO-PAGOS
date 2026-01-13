@@ -6,9 +6,14 @@ Script para importar datos del Excel a la base de datos
 import openpyxl
 from database import init_db, registrar_pago_planilla, registrar_gasto_administrativo
 from datetime import datetime
+import os
 
-def importar_excel_a_bd(archivo_excel=r'C:\Users\USUARIO\Desktop\REGISTRO DE PAGOS\DATA ENERO 2026.xlsx'):
+def importar_excel_a_bd(archivo_excel=None):
     """Importa datos del Excel a la base de datos"""
+    
+    # Si no se especifica ruta, usar ruta relativa
+    if archivo_excel is None:
+        archivo_excel = os.path.join(os.path.dirname(__file__), 'DATA ENERO 2026.xlsx')
     
     print("=" * 70)
     print("IMPORTADOR DE DATOS EXCEL - SISTEMA DE REGISTRO DE PAGOS")
