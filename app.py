@@ -538,31 +538,70 @@ elif opcion == "📋 Ver Registros":
             st.metric("IDs de Registros", f"{', '.join(map(str, [r[0] for r in registros]))}")
         
         st.divider()
-        st.subheader("🗑️ Eliminar Registro Individual")
+        st.subheader("🗑️ Eliminar Registro")
         
-        col_elim1, col_elim2 = st.columns([3, 1])
+        # Inicializar session state para contraseña
+        if 'contraseña_correcta' not in st.session_state:
+            st.session_state.contraseña_correcta = False
         
-        with col_elim1:
-            id_registro = st.number_input(
-                "Ingresa el ID del registro a eliminar:",
-                min_value=1,
-                value=None,
-                help="Puedes ver el ID en la primera columna de la tabla"
-            )
-        
-        with col_elim2:
-            st.markdown("")
-            st.markdown("")
-            if st.button("❌ Eliminar", use_container_width=True):
-                if id_registro:
-                    try:
-                        eliminar_registro(int(id_registro))
-                        st.success(f"✓ Registro ID {id_registro} eliminado correctamente")
+        # Solicitar contraseña
+        if not st.session_state.contraseña_correcta:
+            col_pass1, col_pass2 = st.columns([3, 1])
+            
+            with col_pass1:
+                contraseña = st.text_input(
+                    "🔐 Ingresa la contraseña para eliminar registros:",
+                    type="password",
+                    placeholder="Contraseña requerida"
+                )
+            
+            with col_pass2:
+                st.markdown("")
+                st.markdown("")
+                if st.button("✅ Verificar", use_container_width=True):
+                    if contraseña == "calidad":
+                        st.session_state.contraseña_correcta = True
+                        st.success("✓ Contraseña correcta")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error al eliminar: {e}")
-                else:
-                    st.warning("⚠️ Por favor ingresa un ID válido")
+                    else:
+                        st.error("❌ Contraseña incorrecta")
+        
+        # Si contraseña es correcta, mostrar opciones de eliminación
+        if st.session_state.contraseña_correcta:
+            st.success("🔓 Acceso desbloqueado")
+            st.warning("⚠️ Estás en modo de eliminación. Sé cuidadoso.")
+            
+            col_elim1, col_elim2, col_elim3 = st.columns([2, 1, 1])
+            
+            with col_elim1:
+                id_registro = st.number_input(
+                    "Ingresa el ID del registro a eliminar:",
+                    min_value=1,
+                    value=None,
+                    help="Puedes ver el ID en la primera columna de la tabla"
+                )
+            
+            with col_elim2:
+                st.markdown("")
+                st.markdown("")
+                if st.button("🗑️ Eliminar", use_container_width=True, type="secondary"):
+                    if id_registro:
+                        try:
+                            eliminar_registro(int(id_registro))
+                            st.success(f"✓ Registro ID {id_registro} eliminado correctamente")
+                            st.session_state.contraseña_correcta = False
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error al eliminar: {e}")
+                    else:
+                        st.warning("⚠️ Por favor ingresa un ID válido")
+            
+            with col_elim3:
+                st.markdown("")
+                st.markdown("")
+                if st.button("Cerrar", use_container_width=True):
+                    st.session_state.contraseña_correcta = False
+                    st.rerun()
     else:
         st.info("ℹ️ No hay registros en la fecha seleccionada")
 
