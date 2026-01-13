@@ -7,6 +7,8 @@ Interfaz Streamlit para registrar pagos según la estructura especificada
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
+import sqlite3
+import os
 from database import (
     init_db,
     obtener_rucs,
@@ -37,6 +39,27 @@ st.set_page_config(
 
 # Inicializar BD
 init_db()
+
+# Cargar RUCs desde Excel si la BD está vacía
+@st.cache_resource
+def cargar_rucs_si_necesario():
+    """Carga los RUCs desde Excel si la BD está vacía"""
+    conn = sqlite3.connect("pagos.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM rucs")
+    count = cursor.fetchone()[0]
+    conn.close()
+    
+    if count == 0:
+        # BD vacía, importar datos
+        try:
+            from import_excel import importar_excel_a_bd
+            importar_excel_a_bd()
+        except Exception as e:
+            st.warning(f"⚠️ No se pudieron cargar los RUCs: {e}")
+
+# Ejecutar carga de RUCs
+cargar_rucs_si_necesario()
 
 # Inicializar sesión para mantener estado del formulario
 if 'ruc_registrado' not in st.session_state:
