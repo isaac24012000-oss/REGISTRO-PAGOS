@@ -33,8 +33,7 @@ from database import (
     obtener_ranking_asesores,
     detectar_monto_anormal,
     actualizar_rucs_desde_excel,
-    detectar_promesas_caidas,
-    convertir_a_vencer_a_caidas
+    detectar_promesas_caidas
 )
 
 # Configuración
@@ -783,8 +782,7 @@ elif opcion == "⏳ Promesas Pendientes":
     )
     
     if promesas_pendientes:
-        # Convertir A VENCER a PROMESA CAIDA si la fecha ya pasó
-        promesas_pendientes = convertir_a_vencer_a_caidas(promesas_pendientes)
+        # Los datos ya han sido actualizados por detectar_promesas_caidas() al inicio
         
         # Calcular estadísticas
         total_promesas = len(promesas_pendientes)
@@ -935,8 +933,7 @@ elif opcion == "🎯 Promesas de Hoy":
     promesas = obtener_promesas_hoy()
     
     if promesas:
-        # Convertir A VENCER a PROMESA CAIDA si la fecha ya pasó
-        promesas = convertir_a_vencer_a_caidas(promesas)
+        # Los datos ya han sido actualizados por detectar_promesas_caidas() al inicio
         
         df_promesas = pd.DataFrame(promesas, columns=[
             'ID', 'Fecha Reporte', 'RUC', 'ID Doc', 'Campaña', 'Asesor',
@@ -1218,8 +1215,7 @@ elif opcion == "📋 Ver Registros":
         st.subheader("Todos los registros")
     
     if registros:
-        # Convertir A VENCER a PROMESA CAIDA si la fecha ya pasó
-        registros = convertir_a_vencer_a_caidas(registros)
+        # Los datos ya han sido actualizados por detectar_promesas_caidas() al inicio
         
         # Crear DataFrame
         df = pd.DataFrame(registros, columns=[
