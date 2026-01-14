@@ -27,9 +27,21 @@ def init_db():
             razon_social TEXT NOT NULL,
             campaña TEXT NOT NULL,
             asesor TEXT,
+            deuda_total REAL,
+            gasto_admin REAL,
             fecha_creacion TEXT NOT NULL
         )
         ''')
+    else:
+        # Agregar columnas si no existen
+        cursor.execute("PRAGMA table_info(rucs)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'deuda_total' not in columns:
+            cursor.execute('ALTER TABLE rucs ADD COLUMN deuda_total REAL')
+        
+        if 'gasto_admin' not in columns:
+            cursor.execute('ALTER TABLE rucs ADD COLUMN gasto_admin REAL')
     
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='registros_pagos'")
     if not cursor.fetchone():
@@ -44,13 +56,25 @@ def init_db():
             promesa_ga TEXT,
             monto_gasto REAL,
             fecha_pago_gasto TEXT,
+            estado_ga TEXT DEFAULT 'A VENCER',
             promesa_planilla TEXT,
             monto_planilla REAL,
             fecha_pago_planilla TEXT,
+            estado_planilla TEXT DEFAULT 'A VENCER',
             observaciones TEXT,
             fecha_registro TEXT NOT NULL
         )
         ''')
+    else:
+        # Agregar columnas de estado si no existen
+        cursor.execute("PRAGMA table_info(registros_pagos)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'estado_ga' not in columns:
+            cursor.execute('ALTER TABLE registros_pagos ADD COLUMN estado_ga TEXT DEFAULT "A VENCER"')
+        
+        if 'estado_planilla' not in columns:
+            cursor.execute('ALTER TABLE registros_pagos ADD COLUMN estado_planilla TEXT DEFAULT "A VENCER"')
     
     conn.commit()
     conn.close()
@@ -70,7 +94,7 @@ def obtener_ruc_por_numero(ruc):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    cursor.execute('SELECT id, ruc, id_documento, razon_social, campaña, asesor FROM rucs WHERE ruc = ?', (ruc,))
+    cursor.execute('SELECT id, ruc, id_documento, razon_social, campaña, asesor, deuda_total, gasto_admin FROM rucs WHERE ruc = ?', (ruc,))
     resultados = cursor.fetchall()
     conn.close()
     return resultados
@@ -108,16 +132,38 @@ def registrar_pago(fecha_reporte, ruc, id_documento, campaña, asesor,
     
     fecha_registro = datetime.now().isoformat()
     
+    # Determinar estado de promesas automáticamente
+    estado_ga = 'A VENCER'
+    estado_planilla = 'A VENCER'
+    
+    # Si la fecha de pago ya pasó y aún no hay cobro registrado
+    hoy = date.today()
+    if fecha_pago_gasto and promesa_ga:
+        try:
+            fecha_pago = datetime.strptime(fecha_pago_gasto, '%Y-%m-%d').date()
+            if fecha_pago < hoy:
+                estado_ga = 'PROMESA CAIDA'
+        except:
+            pass
+    
+    if fecha_pago_planilla and promesa_planilla:
+        try:
+            fecha_pago = datetime.strptime(fecha_pago_planilla, '%Y-%m-%d').date()
+            if fecha_pago < hoy:
+                estado_planilla = 'PROMESA CAIDA'
+        except:
+            pass
+    
     cursor.execute('''
     INSERT INTO registros_pagos 
     (fecha_reporte, ruc, id_documento, campaña, asesor, 
-     promesa_ga, monto_gasto, fecha_pago_gasto,
-     promesa_planilla, monto_planilla, fecha_pago_planilla,
+     promesa_ga, monto_gasto, fecha_pago_gasto, estado_ga,
+     promesa_planilla, monto_planilla, fecha_pago_planilla, estado_planilla,
      observaciones, fecha_registro)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (fecha_reporte, ruc, id_documento, campaña, asesor,
-          promesa_ga, monto_gasto, fecha_pago_gasto,
-          promesa_planilla, monto_planilla, fecha_pago_planilla,
+          promesa_ga, monto_gasto, fecha_pago_gasto, estado_ga,
+          promesa_planilla, monto_planilla, fecha_pago_planilla, estado_planilla,
           observaciones, fecha_registro))
     
     conn.commit()
@@ -198,6 +244,78 @@ def eliminar_registro(registro_id):
     cursor.execute('DELETE FROM registros_pagos WHERE id = ?', (registro_id,))
     conn.commit()
     conn.close()
+
+def detectar_duplicado_exacto(fecha_reporte, ruc, id_documento, campaña, asesor,
+                              promesa_ga=None, monto_gasto=None, fecha_pago_gasto=None,
+                              promesa_planilla=None, monto_planilla=None, fecha_pago_planilla=None,
+                              observaciones=""):
+    """
+    Detecta si existe un registro exactamente igual (mismo RUC, fecha y todos los datos)
+    Retorna: (existe_duplicado, id_duplicado, mensaje)
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    SELECT id FROM registros_pagos
+    WHERE 
+        fecha_reporte = ?
+        AND ruc = ?
+        AND id_documento = ?
+        AND campaña = ?
+        AND COALESCE(asesor, '') = COALESCE(?, '')
+        AND COALESCE(promesa_ga, '') = COALESCE(?, '')
+        AND COALESCE(monto_gasto, 0) = COALESCE(?, 0)
+        AND COALESCE(fecha_pago_gasto, '') = COALESCE(?, '')
+        AND COALESCE(promesa_planilla, '') = COALESCE(?, '')
+        AND COALESCE(monto_planilla, 0) = COALESCE(?, 0)
+        AND COALESCE(fecha_pago_planilla, '') = COALESCE(?, '')
+        AND COALESCE(observaciones, '') = COALESCE(?, '')
+    LIMIT 1
+    ''', (fecha_reporte, ruc, id_documento, campaña, asesor,
+          promesa_ga, monto_gasto, fecha_pago_gasto,
+          promesa_planilla, monto_planilla, fecha_pago_planilla,
+          observaciones))
+    
+    resultado = cursor.fetchone()
+    conn.close()
+    
+    if resultado:
+        return True, resultado[0], f"⚠️ Duplicado detectado: Este registro ya existe (ID: {resultado[0]})"
+    else:
+        return False, None, None
+
+def obtener_ranking_asesores(fecha_inicio=None, fecha_fin=None):
+    """Obtiene ranking de asesores por total cobrado en el período"""
+    if fecha_inicio is None:
+        fecha_inicio = date.today().isoformat()
+    
+    if fecha_fin is None:
+        fecha_fin = date.today().isoformat()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    SELECT 
+        COALESCE(asesor, 'SIN ASESOR') as asesor,
+        COUNT(DISTINCT ruc) as total_rucs,
+        COUNT(DISTINCT CASE WHEN monto_gasto > 0 THEN ruc END) as rucs_ga,
+        COUNT(DISTINCT CASE WHEN monto_planilla > 0 THEN ruc END) as rucs_planilla,
+        COALESCE(SUM(CASE WHEN monto_gasto > 0 THEN monto_gasto ELSE 0 END), 0) as total_ga,
+        COALESCE(SUM(CASE WHEN monto_planilla > 0 THEN monto_planilla ELSE 0 END), 0) as total_planilla,
+        COALESCE(SUM(CASE WHEN monto_gasto > 0 THEN monto_gasto ELSE 0 END), 0) 
+        + COALESCE(SUM(CASE WHEN monto_planilla > 0 THEN monto_planilla ELSE 0 END), 0) as total_cobrado
+    FROM registros_pagos
+    WHERE fecha_reporte BETWEEN ? AND ?
+    GROUP BY asesor
+    ORDER BY total_cobrado DESC
+    ''', (fecha_inicio, fecha_fin))
+    
+    resultados = cursor.fetchall()
+    conn.close()
+    
+    return resultados
 
 def obtener_estadisticas_hoy():
     """Obtiene estadísticas de pagos de hoy"""
@@ -442,3 +560,440 @@ def obtener_resumen_total_por_promesa(tipo_pago='gasto', fecha=None):
     
     return resultados
 
+def obtener_resumen_asesores_diario(fecha=None):
+    """Obtiene resumen diario de lo cobrado por cada asesor (GA + Planilla)"""
+    if fecha is None:
+        fecha = date.today().isoformat()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    SELECT 
+        COALESCE(asesor, 'SIN ASESOR') as asesor,
+        COUNT(DISTINCT CASE WHEN monto_gasto > 0 THEN ruc END) as rucs_ga,
+        COUNT(DISTINCT CASE WHEN monto_planilla > 0 THEN ruc END) as rucs_planilla,
+        COALESCE(SUM(CASE WHEN fecha_pago_gasto = ? AND monto_gasto > 0 THEN monto_gasto ELSE 0 END), 0) as total_ga,
+        COALESCE(SUM(CASE WHEN fecha_pago_planilla = ? AND monto_planilla > 0 THEN monto_planilla ELSE 0 END), 0) as total_planilla
+    FROM registros_pagos
+    WHERE (fecha_pago_gasto = ? OR fecha_pago_planilla = ?)
+    GROUP BY asesor
+    ORDER BY (total_ga + total_planilla) DESC
+    ''', (fecha, fecha, fecha, fecha))
+    
+    resultados = cursor.fetchall()
+    conn.close()
+    
+    return resultados
+
+def obtener_promesas_pendientes(fecha_inicio=None, fecha_fin=None):
+    """Obtiene promesas pendientes (A VENCER) con fecha de pago entre dos fechas"""
+    if fecha_inicio is None:
+        fecha_inicio = date.today().isoformat()
+    
+    if fecha_fin is None:
+        # Por defecto, mostrar los próximos 30 días
+        fecha_fin = (date.today() + __import__('datetime').timedelta(days=30)).isoformat()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # RUCs con promesas A VENCER que tengan fecha de pago en el rango especificado
+    cursor.execute('''
+    SELECT DISTINCT
+        ruc,
+        id_documento,
+        asesor,
+        campaña,
+        promesa_ga,
+        promesa_planilla,
+        CASE 
+            WHEN promesa_ga = 'A VEN...' AND fecha_pago_gasto != '' AND fecha_pago_gasto IS NOT NULL THEN fecha_pago_gasto
+            WHEN promesa_planilla = 'A VEN...' AND fecha_pago_planilla != '' AND fecha_pago_planilla IS NOT NULL THEN fecha_pago_planilla
+            ELSE NULL
+        END as fecha_pago_pendiente,
+        MAX(fecha_reporte) as ultima_fecha
+    FROM registros_pagos
+    WHERE 
+        (promesa_ga = 'A VEN...' OR promesa_planilla = 'A VEN...')
+        AND (
+            (promesa_ga = 'A VEN...' AND fecha_pago_gasto BETWEEN ? AND ? AND fecha_pago_gasto != '')
+            OR (promesa_planilla = 'A VEN...' AND fecha_pago_planilla BETWEEN ? AND ? AND fecha_pago_planilla != '')
+        )
+    GROUP BY ruc
+    ORDER BY fecha_pago_pendiente, asesor, ruc
+    ''', (fecha_inicio, fecha_fin, fecha_inicio, fecha_fin))
+    
+    resultados = cursor.fetchall()
+    conn.close()
+    
+    return resultados
+
+def obtener_estadisticas_montos():
+    """Obtiene estadísticas de montos para detectar valores anormales"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Estadísticas de Gasto Administrativo
+    cursor.execute('''
+    SELECT 
+        AVG(monto_gasto) as promedio_ga,
+        MIN(monto_gasto) as min_ga,
+        MAX(monto_gasto) as max_ga,
+        COUNT(*) as count_ga
+    FROM registros_pagos
+    WHERE monto_gasto > 0
+    ''')
+    
+    stats_ga = cursor.fetchone()
+    
+    # Estadísticas de Planilla
+    cursor.execute('''
+    SELECT 
+        AVG(monto_planilla) as promedio_plan,
+        MIN(monto_planilla) as min_plan,
+        MAX(monto_planilla) as max_plan,
+        COUNT(*) as count_plan
+    FROM registros_pagos
+    WHERE monto_planilla > 0
+    ''')
+    
+    stats_plan = cursor.fetchone()
+    
+    conn.close()
+    
+    return {
+        'ga': stats_ga if stats_ga[0] else (0, 0, 0, 0),
+        'planilla': stats_plan if stats_plan[0] else (0, 0, 0, 0)
+    }
+
+def detectar_monto_anormal(monto, tipo_pago='ga'):
+    """
+    Detecta si un monto es anormalmente alto o bajo
+    tipo_pago: 'ga' o 'planilla'
+    Retorna: (es_anormal, tipo_anomalia, mensaje)
+    """
+    if monto <= 0:
+        return False, None, None
+    
+    stats = obtener_estadisticas_montos()
+    
+    if tipo_pago == 'ga':
+        promedio, minimo, maximo, count = stats['ga']
+    else:
+        promedio, minimo, maximo, count = stats['planilla']
+    
+    # Si no hay suficientes datos, no alertar
+    if count == 0 or promedio == 0:
+        return False, None, None
+    
+    # Calcular rangos tolerables (50% - 150% del promedio)
+    rango_bajo = promedio * 0.5
+    rango_alto = promedio * 1.5
+    
+    # Casos de alerta
+    if monto < rango_bajo:
+        porcentaje = (monto / promedio * 100) if promedio > 0 else 0
+        return True, "BAJO", (
+            f"⚠️ **Monto ANORMALMENTE BAJO**\n\n"
+            f"Monto ingresado: S/. {monto:,.2f}\n"
+            f"Promedio histórico: S/. {promedio:,.2f}\n"
+            f"Porcentaje del promedio: {porcentaje:.1f}%\n\n"
+            f"Este monto es **{100-porcentaje:.0f}% menor** al promedio."
+        )
+    
+    elif monto > rango_alto:
+        porcentaje = (monto / promedio * 100) if promedio > 0 else 0
+        return True, "ALTO", (
+            f"⚠️ **Monto ANORMALMENTE ALTO**\n\n"
+            f"Monto ingresado: S/. {monto:,.2f}\n"
+            f"Promedio histórico: S/. {promedio:,.2f}\n"
+            f"Porcentaje del promedio: {porcentaje:.1f}%\n\n"
+            f"Este monto es **{porcentaje-100:.0f}% mayor** al promedio."
+        )
+    
+    return False, None, None
+
+def actualizar_rucs_desde_excel(excel_path="DATA ENERO 2026.xlsx"):
+    """Actualiza los datos de deuda_total y gasto_admin desde el Excel"""
+    try:
+        # Leer Excel
+        df = pd.read_excel(excel_path)
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Mapear columnas del Excel
+        for _, row in df.iterrows():
+            documento = str(row.get('DOCUMENTO', '')).strip()
+            deuda_total = float(row.get('DEUDA TOTAL', 0)) if pd.notna(row.get('DEUDA TOTAL')) else None
+            gasto_admin = float(row.get('GASTOS ADMIN', 0)) if pd.notna(row.get('GASTOS ADMIN')) else None
+            
+            # Buscar RUC por ID Documento
+            cursor.execute('SELECT id FROM rucs WHERE id_documento = ?', (documento,))
+            resultado = cursor.fetchone()
+            
+            if resultado:
+                ruc_id = resultado[0]
+                cursor.execute('''
+                    UPDATE rucs 
+                    SET deuda_total = ?, gasto_admin = ?
+                    WHERE id = ?
+                ''', (deuda_total, gasto_admin, ruc_id))
+        
+        conn.commit()
+        conn.close()
+        return True, "Datos del Excel actualizados correctamente"
+    except Exception as e:
+        return False, f"Error al actualizar datos: {str(e)}"
+def detectar_promesas_caidas(fecha_actual=None):
+    """Detecta promesas que vencieron pero no fueron cobradas (PROMESAS CAIDAS)
+    y actualiza su estado automáticamente. También revierte el estado de promesas
+    que se marcaron como caídas pero cuya fecha aún no ha pasado."""
+    if fecha_actual is None:
+        fecha_actual = date.today()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Obtener promesas que están en estado 'A VENCER' o 'PROMESA CAIDA'
+    cursor.execute('''
+    SELECT id, fecha_pago_gasto, estado_ga, fecha_pago_planilla, estado_planilla
+    FROM registros_pagos
+    WHERE (estado_ga IN ('A VENCER', 'PROMESA CAIDA') OR estado_planilla IN ('A VENCER', 'PROMESA CAIDA'))
+    ''')
+    
+    registros = cursor.fetchall()
+    caidas_ga = []
+    caidas_planilla = []
+    
+    for registro in registros:
+        registro_id, fecha_ga, estado_ga, fecha_planilla, estado_planilla = registro
+        
+        # Verificar promesa GA
+        if fecha_ga and estado_ga in ('A VENCER', 'PROMESA CAIDA'):
+            try:
+                fecha_pago = datetime.strptime(fecha_ga, '%Y-%m-%d').date()
+                
+                if fecha_pago < fecha_actual and estado_ga == 'A VENCER':
+                    # La fecha pasó y aún está "A VENCER" → Marcar como CAIDA
+                    cursor.execute('UPDATE registros_pagos SET estado_ga = ? WHERE id = ?', 
+                                 ('PROMESA CAIDA', registro_id))
+                    caidas_ga.append(registro_id)
+                elif fecha_pago >= fecha_actual and estado_ga == 'PROMESA CAIDA':
+                    # La fecha aún no pasa pero está marcada como CAIDA → Revertir a "A VENCER"
+                    cursor.execute('UPDATE registros_pagos SET estado_ga = ? WHERE id = ?', 
+                                 ('A VENCER', registro_id))
+            except:
+                pass
+        
+        # Verificar promesa Planilla
+        if fecha_planilla and estado_planilla in ('A VENCER', 'PROMESA CAIDA'):
+            try:
+                fecha_pago = datetime.strptime(fecha_planilla, '%Y-%m-%d').date()
+                
+                if fecha_pago < fecha_actual and estado_planilla == 'A VENCER':
+                    # La fecha pasó y aún está "A VENCER" → Marcar como CAIDA
+                    cursor.execute('UPDATE registros_pagos SET estado_planilla = ? WHERE id = ?', 
+                                 ('PROMESA CAIDA', registro_id))
+                    caidas_planilla.append(registro_id)
+                elif fecha_pago >= fecha_actual and estado_planilla == 'PROMESA CAIDA':
+                    # La fecha aún no pasa pero está marcada como CAIDA → Revertir a "A VENCER"
+                    cursor.execute('UPDATE registros_pagos SET estado_planilla = ? WHERE id = ?', 
+                                 ('A VENCER', registro_id))
+            except:
+                pass
+    
+    conn.commit()
+    conn.close()
+    
+    return caidas_ga, caidas_planilla
+
+def obtener_promesas_caidas(fecha_inicio=None, fecha_fin=None):
+    """Obtiene todas las promesas caídas en un rango de fechas
+    Solo muestra promesas que están como CAIDA pero cuyo estado original era A VENCER"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    if fecha_inicio is None:
+        fecha_inicio = (date.today() - pd.Timedelta(days=30)).strftime('%Y-%m-%d')
+    if fecha_fin is None:
+        fecha_fin = date.today().strftime('%Y-%m-%d')
+    
+    # Promesas GA caídas (excluir si ALGUNO de los dos está COBRADO)
+    cursor.execute('''
+    SELECT id, fecha_reporte, ruc, id_documento, campaña, asesor,
+           'GASTO ADMINISTRATIVO' as tipo_promesa,
+           promesa_ga as estado_promesa, monto_gasto as monto,
+           fecha_pago_gasto as fecha_vencimiento, observaciones
+    FROM registros_pagos
+    WHERE estado_ga = 'PROMESA CAIDA'
+    AND estado_ga != 'COBRADO' AND estado_planilla != 'COBRADO'
+    AND fecha_reporte BETWEEN ? AND ?
+    ORDER BY fecha_pago_gasto DESC
+    ''', (fecha_inicio, fecha_fin))
+    
+    caidas_ga = cursor.fetchall()
+    
+    # Promesas Planilla caídas (excluir si ALGUNO de los dos está COBRADO)
+    cursor.execute('''
+    SELECT id, fecha_reporte, ruc, id_documento, campaña, asesor,
+           'PLANILLA' as tipo_promesa,
+           promesa_planilla as estado_promesa, monto_planilla as monto,
+           fecha_pago_planilla as fecha_vencimiento, observaciones
+    FROM registros_pagos
+    WHERE estado_planilla = 'PROMESA CAIDA'
+    AND estado_ga != 'COBRADO' AND estado_planilla != 'COBRADO'
+    AND fecha_reporte BETWEEN ? AND ?
+    ORDER BY fecha_pago_planilla DESC
+    ''', (fecha_inicio, fecha_fin))
+    
+    caidas_planilla = cursor.fetchall()
+    
+    conn.close()
+    
+    # Combinar resultados
+    todas_caidas = caidas_ga + caidas_planilla
+    return sorted(todas_caidas, key=lambda x: x[9] if x[9] else '', reverse=True)
+
+def marcar_promesa_cobrada(registro_id, tipo_promesa):
+    """Marca una promesa caída como cobrada"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    if tipo_promesa == 'GASTO ADMINISTRATIVO':
+        cursor.execute('UPDATE registros_pagos SET estado_ga = ? WHERE id = ?',
+                     ('COBRADO', registro_id))
+    else:
+        cursor.execute('UPDATE registros_pagos SET estado_planilla = ? WHERE id = ?',
+                     ('COBRADO', registro_id))
+    
+    conn.commit()
+    conn.close()
+    return True
+
+def obtener_estadisticas_promesas_caidas():
+    """Obtiene estadísticas de promesas caídas
+    Los pagos de PLANILLA y GASTO ADMINISTRATIVO son independientes
+    Se cuentan solo si su estado es PROMESA CAIDA
+    Excluye si ALGUNO está COBRADO
+    Los RUCs se cuentan sin duplicados"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    # Filtro: mostrar si CUALQUIERA es PROMESA CAIDA, PERO excluir si ALGUNO está COBRADO
+    filtro_caidas = "(estado_ga = 'PROMESA CAIDA' OR estado_planilla = 'PROMESA CAIDA') AND estado_ga != 'COBRADO' AND estado_planilla != 'COBRADO'"
+    
+    # Total de promesas caídas
+    cursor.execute(f'''
+    SELECT COUNT(*) FROM registros_pagos
+    WHERE {filtro_caidas}
+    ''')
+    total_caidas = cursor.fetchone()[0]
+    
+    # RUCs únicos con promesas caídas
+    cursor.execute(f'''
+    SELECT COUNT(DISTINCT ruc) FROM registros_pagos
+    WHERE {filtro_caidas}
+    ''')
+    rucs_unicos = cursor.fetchone()[0]
+    
+    # Monto total de promesas caídas
+    cursor.execute(f'''
+    SELECT COALESCE(SUM(CASE WHEN estado_ga = 'PROMESA CAIDA'
+                             THEN monto_gasto ELSE 0 END), 0) +
+           COALESCE(SUM(CASE WHEN estado_planilla = 'PROMESA CAIDA'
+                             THEN monto_planilla ELSE 0 END), 0)
+    FROM registros_pagos
+    WHERE estado_ga != 'COBRADO' AND estado_planilla != 'COBRADO'
+    '''
+    )
+    monto_total = cursor.fetchone()[0] or 0
+    
+    # Por asesor (RUCs únicos)
+    cursor.execute(f'''
+    SELECT asesor, COUNT(DISTINCT ruc) as cantidad
+    FROM registros_pagos
+    WHERE {filtro_caidas}
+    GROUP BY asesor
+    ORDER BY cantidad DESC
+    ''')
+    por_asesor = cursor.fetchall()
+    
+    # Por campaña (RUCs únicos)
+    cursor.execute(f'''
+    SELECT campaña, COUNT(DISTINCT ruc) as cantidad
+    FROM registros_pagos
+    WHERE {filtro_caidas}
+    GROUP BY campaña
+    ORDER BY cantidad DESC
+    ''')
+    por_campana = cursor.fetchall()
+    
+    conn.close()
+    
+    return {
+        'total': total_caidas,
+        'rucs_unicos': rucs_unicos,
+        'monto_total': monto_total,
+        'por_asesor': por_asesor,
+        'por_campana': por_campana
+    }
+
+
+def convertir_a_vencer_a_caidas(registros):
+    """
+    Convierte 'A VENCER' a 'PROMESA CAIDA' si la fecha de vencimiento ya pasó.
+    
+    Recibe: lista de tuplas con registros
+    Retorna: lista modificada donde 'A VENCER' con fecha pasada se convierte a 'PROMESA CAIDA'
+    """
+    if not registros:
+        return registros
+    
+    registros_procesados = []
+    hoy = date.today()
+    
+    for registro in registros:
+        # Convertir tupla a lista para poder modificarla
+        registro_list = list(registro)
+        
+        # Índices esperados: 6=Promesa GA, 8=Fecha Pago GA, 9=Promesa Planilla, 11=Fecha Pago Planilla
+        
+        # Procesar Promesa Gastos Admin (índice 6) y su fecha (índice 8)
+        if len(registro_list) > 8:
+            promesa_ga = registro_list[6]
+            fecha_pago_ga = registro_list[8]
+            
+            if promesa_ga == "A VENCER" and fecha_pago_ga:
+                try:
+                    if isinstance(fecha_pago_ga, str):
+                        fecha_obj = datetime.fromisoformat(fecha_pago_ga).date()
+                    else:
+                        fecha_obj = fecha_pago_ga
+                    
+                    if fecha_obj < hoy:
+                        registro_list[6] = "PROMESA CAIDA"
+                except (ValueError, TypeError):
+                    pass  # Si hay error parsing la fecha, dejar como está
+        
+        # Procesar Promesa Planilla (índice 9) y su fecha (índice 11)
+        if len(registro_list) > 11:
+            promesa_planilla = registro_list[9]
+            fecha_pago_planilla = registro_list[11]
+            
+            if promesa_planilla == "A VENCER" and fecha_pago_planilla:
+                try:
+                    if isinstance(fecha_pago_planilla, str):
+                        fecha_obj = datetime.fromisoformat(fecha_pago_planilla).date()
+                    else:
+                        fecha_obj = fecha_pago_planilla
+                    
+                    if fecha_obj < hoy:
+                        registro_list[9] = "PROMESA CAIDA"
+                except (ValueError, TypeError):
+                    pass  # Si hay error parsing la fecha, dejar como está
+        
+        registros_procesados.append(tuple(registro_list))
+    
+    return registros_procesados

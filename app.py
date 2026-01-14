@@ -26,7 +26,15 @@ from database import (
     obtener_promesas_hoy,
     obtener_estadisticas_promesas_hoy,
     obtener_resumen_por_asesor_promesa,
-    obtener_resumen_total_por_promesa
+    obtener_resumen_total_por_promesa,
+    obtener_resumen_asesores_diario,
+    obtener_promesas_pendientes,
+    detectar_duplicado_exacto,
+    obtener_ranking_asesores,
+    detectar_monto_anormal,
+    actualizar_rucs_desde_excel,
+    detectar_promesas_caidas,
+    convertir_a_vencer_a_caidas
 )
 
 # Configuración
@@ -37,8 +45,126 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# CSS Personalizado - Tema azul/celeste
+st.markdown("""
+    <style>
+    /* Variables de colores */
+    :root {
+        --primary-blue: #4A90E2;
+        --secondary-blue: #357ABD;
+        --light-blue: #E8F4F8;
+        --sky-blue: #F0F8FF;
+        --accent-cyan: #00BCD4;
+    }
+    
+    /* Fondo general */
+    [data-testid="stAppViewContainer"] {
+        background: linear-gradient(135deg, #F5FAFB 0%, #E8F4F8 100%);
+    }
+    
+    /* Botones del menú */
+    .menu-button {
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        border: 2px solid;
+        transition: all 0.3s ease;
+    }
+    
+    /* Tarjetas de métricas */
+    [data-testid="metric-container"] {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 15px rgba(74, 144, 226, 0.1);
+        border-left: 5px solid #4A90E2;
+        transition: all 0.3s ease;
+    }
+    
+    [data-testid="metric-container"]:hover {
+        box-shadow: 0 8px 25px rgba(74, 144, 226, 0.2);
+        transform: translateY(-2px);
+    }
+    
+    /* Headers de secciones */
+    h2 {
+        color: #357ABD;
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 20px;
+    }
+    
+    h3 {
+        color: #4A90E2;
+        font-weight: 600;
+    }
+    
+    /* Dividers */
+    hr {
+        border: 1px solid rgba(74, 144, 226, 0.2);
+        margin: 20px 0;
+    }
+    
+    /* Contenedores de secciones */
+    .section-container {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 12px;
+        padding: 25px;
+        margin: 15px 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        border-top: 4px solid #4A90E2;
+    }
+    
+    /* Botones estilizados */
+    button {
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+    }
+    
+    /* Tablas */
+    [data-testid="stDataFrame"] {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    /* Info boxes */
+    [data-testid="stInfo"] {
+        background: linear-gradient(135deg, #E3F2FD 0%, #F0F8FF 100%);
+        border-left: 4px solid #4A90E2;
+        border-radius: 8px;
+    }
+    
+    [data-testid="stSuccess"] {
+        background: linear-gradient(135deg, #E8F5E9 0%, #F1F8E9 100%);
+        border-left: 4px solid #4CAF50;
+        border-radius: 8px;
+    }
+    
+    [data-testid="stWarning"] {
+        background: linear-gradient(135deg, #FFF3E0 0%, #FFFDE7 100%);
+        border-left: 4px solid #FF9800;
+        border-radius: 8px;
+    }
+    
+    [data-testid="stError"] {
+        background: linear-gradient(135deg, #FFEBEE 0%, #FCE4EC 100%);
+        border-left: 4px solid #F44336;
+        border-radius: 8px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
 # Inicializar BD
 init_db()
+
+# Actualizar datos de Deuda Total y Gasto Admin desde Excel
+actualizar_rucs_desde_excel()
 
 # Cargar RUCs desde Excel si la BD está vacía
 @st.cache_resource
@@ -66,45 +192,134 @@ if 'ruc_registrado' not in st.session_state:
     st.session_state.ruc_registrado = None
 if 'ruc_info_encontrada' not in st.session_state:
     st.session_state.ruc_info_encontrada = None
+if 'pagina_actual' not in st.session_state:
+    st.session_state.pagina_actual = "📊 Dashboard"
 
 # Título principal
 st.title("💰 Sistema de Registro de Pagos Diarios")
 st.markdown("---")
+st.markdown("")
+
+# Menú de navegación con botones
+st.markdown("""
+    <div style='background: linear-gradient(135deg, #E3F2FD 0%, #F0F8FF 100%); 
+                border-radius: 12px; padding: 20px; margin: 10px 0;
+                border-left: 5px solid #4A90E2;'>
+        <h3 style='margin: 0 0 15px 0; color: #357ABD;'>🎯 Selecciona una sección:</h3>
+    </div>
+""", unsafe_allow_html=True)
+
+menu_opciones = [
+    "📊 Dashboard",
+    "👥 Resumen de Asesores",
+    "🏆 Ranking de Asesores",
+    "⏳ Promesas Pendientes",
+    "🎯 Promesas de Hoy",
+    "📝 Registrar Pago",
+    "📋 Ver Registros",
+    "📂 Exportar Datos"
+]
+
+# Colores para cada botón
+colores_botones = {
+    "📊 Dashboard": "#4A90E2",
+    "👥 Resumen de Asesores": "#9C27B0",
+    "🏆 Ranking de Asesores": "#FF9800",
+    "⏳ Promesas Pendientes": "#F44336",
+    "🎯 Promesas de Hoy": "#E91E63",
+    "📝 Registrar Pago": "#2196F3",
+    "📋 Ver Registros": "#009688",
+    "📂 Exportar Datos": "#FFC107"
+}
+
+# Crear 3 columnas de botones x 3 filas
+col1, col2, col3 = st.columns(3)
+
+botones = [
+    (col1, menu_opciones[0]),
+    (col2, menu_opciones[1]),
+    (col3, menu_opciones[2]),
+]
+
+for col, opcion_btn in botones:
+    with col:
+        color = colores_botones[opcion_btn]
+        if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
+                    help=f"Ir a {opcion_btn}"):
+            st.session_state.pagina_actual = opcion_btn
+            st.rerun()
+
+col1, col2, col3 = st.columns(3)
+
+botones2 = [
+    (col1, menu_opciones[3]),
+    (col2, menu_opciones[4]),
+    (col3, menu_opciones[5]),
+]
+
+for col, opcion_btn in botones2:
+    with col:
+        color = colores_botones[opcion_btn]
+        if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
+                    help=f"Ir a {opcion_btn}"):
+            st.session_state.pagina_actual = opcion_btn
+            st.rerun()
+
+col1, col2 = st.columns(2)
+
+botones3 = [
+    (col1, menu_opciones[6]),
+    (col2, menu_opciones[7]),
+]
+
+for col, opcion_btn in botones3:
+    with col:
+        color = colores_botones[opcion_btn]
+        if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
+                    help=f"Ir a {opcion_btn}"):
+            st.session_state.pagina_actual = opcion_btn
+            st.rerun()
+
+st.divider()
+
+opcion = st.session_state.pagina_actual
 
 # Sidebar
 with st.sidebar:
-    st.header("⚙️ Menú")
+    st.markdown("**📅 FILTROS**")
+    st.markdown("")
     
     # Mostrar estado de la BD
     registros_total = len(obtener_todos_registros())
-    st.metric("📊 Registros Guardados", registros_total, delta="Guardados en BD")
-    st.info(f"✓ Los datos se guardan permanentemente en `pagos.db`")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.metric("📊 Registros", registros_total)
+    with col2:
+        st.info("✓ Guardado")
     
     st.divider()
-    
-    opcion = st.radio(
-        "Selecciona una opción:",
-        [
-            "📊 Dashboard",
-            "🎯 Promesas de Hoy",
-            "📝 Registrar Pago",
-            "📋 Ver Registros",
-            "📂 Exportar Datos"
-        ]
-    )
+    st.markdown("")
 
 # ======================== DASHBOARD ========================
 if opcion == "📊 Dashboard":
-    st.header("📊 Dashboard de Pagos")
+    st.markdown("""
+        <div style='background: linear-gradient(135deg, #E3F2FD 0%, #F0F8FF 100%); 
+                    border-radius: 12px; padding: 20px; margin: 10px 0;
+                    border-left: 5px solid #4A90E2;'>
+            <h2 style='margin: 0; color: #357ABD;'>📊 Dashboard de Pagos</h2>
+        </div>
+    """, unsafe_allow_html=True)
     
     # Filtro de fecha en la barra lateral
     with st.sidebar:
-        st.markdown("### 📅 Filtros")
         fecha_filtro = st.date_input(
-            "Selecciona fecha:",
+            "📅 Selecciona fecha:",
             value=date.today(),
             key="fecha_dashboard"
         )
+    
+    # Convertir promesas vencidas a PROMESA CAIDA antes de obtener datos
+    detectar_promesas_caidas()
     
     # Obtener datos con la fecha seleccionada
     resumen_gasto = obtener_resumen_total_por_promesa(tipo_pago='gasto', fecha=fecha_filtro)
@@ -112,10 +327,19 @@ if opcion == "📊 Dashboard":
     resumen_asesor_gasto = obtener_resumen_por_asesor_promesa(tipo_pago='gasto', fecha=fecha_filtro)
     resumen_asesor_planilla = obtener_resumen_por_asesor_promesa(tipo_pago='planilla', fecha=fecha_filtro)
     
+    # Obtener todos los registros de la fecha para contar RUCs únicos
+    registros_fecha = obtener_registros_por_fecha(fecha_filtro)
+    
     # Calcular totales
     total_gasto = sum(r[2] for r in resumen_gasto) if resumen_gasto else 0
-    total_rucs_gasto = sum(r[1] for r in resumen_gasto) if resumen_gasto else 0
     total_planilla = sum(r[2] for r in resumen_planilla) if resumen_planilla else 0
+    
+    # Contar RUCs únicos (no duplicados)
+    rucs_unicos = set(r[2] for r in registros_fecha)  # r[2] es el RUC
+    total_rucs_unicos = len(rucs_unicos)
+    
+    # Mantener conteos separados por promesa para las tablas
+    total_rucs_gasto = sum(r[1] for r in resumen_gasto) if resumen_gasto else 0
     total_rucs_planilla = sum(r[1] for r in resumen_planilla) if resumen_planilla else 0
     total_general = total_gasto + total_planilla
     
@@ -152,12 +376,23 @@ if opcion == "📊 Dashboard":
         if resumen_gasto:
             # Métricas de gasto
             a_vencer_gasto = [r for r in resumen_gasto if r[0] == 'A VEN...']
+            promesas_caidas_gasto = [r for r in resumen_gasto if r[0] == 'PROMESA CAIDA']
             cobrado_gasto = [r for r in resumen_gasto if r[0] == 'COBR...']
             
             m_col1, m_col2 = st.columns(2)
             
             with m_col1:
-                if a_vencer_gasto:
+                if promesas_caidas_gasto:
+                    # Mostrar Promesas Caídas en rojo
+                    st.markdown(
+                        f"<div style='background-color: #ffcccc; border-left: 4px solid #ff0000; padding: 15px; border-radius: 8px;'>"
+                        f"<p style='margin: 0; font-size: 18px; font-weight: bold; color: #cc0000;'>⚠️ Promesas Caídas</p>"
+                        f"<p style='margin: 5px 0; font-size: 24px; color: #cc0000; font-weight: bold;'>S/. {promesas_caidas_gasto[0][2]:,.2f}</p>"
+                        f"<p style='margin: 5px 0; color: #990000;'>📦 {promesas_caidas_gasto[0][1]} RUCs</p>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+                elif a_vencer_gasto:
                     st.info(f"⏳ A Vencer\n\n💰 S/. {a_vencer_gasto[0][2]:,.2f}\n\n📦 {a_vencer_gasto[0][1]} RUCs")
                 else:
                     st.warning("⏳ A Vencer: Sin datos")
@@ -175,9 +410,16 @@ if opcion == "📊 Dashboard":
                 st.write("**Detalle por Asesor:**")
                 tabla_gasto = []
                 for asesor, promesa, count, monto in resumen_asesor_gasto:
+                    if promesa == 'PROMESA CAIDA':
+                        estado_icon = '⚠️'
+                    elif promesa == 'A VEN...':
+                        estado_icon = '⏳'
+                    else:
+                        estado_icon = '✅'
+                    
                     tabla_gasto.append({
                         'Asesor': asesor.split()[0] if asesor else 'N/A',  # Nombre corto
-                        'Estado': '⏳' if promesa == 'A VEN...' else '✅',
+                        'Estado': estado_icon,
                         'Monto': f"S/. {monto:,.0f}",
                         'RUCs': count
                     })
@@ -194,12 +436,23 @@ if opcion == "📊 Dashboard":
         if resumen_planilla:
             # Métricas de planilla
             a_vencer_plan = [r for r in resumen_planilla if r[0] == 'A VEN...']
+            promesas_caidas_plan = [r for r in resumen_planilla if r[0] == 'PROMESA CAIDA']
             cobrado_plan = [r for r in resumen_planilla if r[0] == 'COBR...']
             
             m_col1, m_col2 = st.columns(2)
             
             with m_col1:
-                if a_vencer_plan:
+                if promesas_caidas_plan:
+                    # Mostrar Promesas Caídas en rojo
+                    st.markdown(
+                        f"<div style='background-color: #ffcccc; border-left: 4px solid #ff0000; padding: 15px; border-radius: 8px;'>"
+                        f"<p style='margin: 0; font-size: 18px; font-weight: bold; color: #cc0000;'>⚠️ Promesas Caídas</p>"
+                        f"<p style='margin: 5px 0; font-size: 24px; color: #cc0000; font-weight: bold;'>S/. {promesas_caidas_plan[0][2]:,.2f}</p>"
+                        f"<p style='margin: 5px 0; color: #990000;'>📦 {promesas_caidas_plan[0][1]} RUCs</p>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+                elif a_vencer_plan:
                     st.info(f"⏳ A Vencer\n\n💰 S/. {a_vencer_plan[0][2]:,.2f}\n\n📦 {a_vencer_plan[0][1]} RUCs")
                 else:
                     st.warning("⏳ A Vencer: Sin datos")
@@ -217,9 +470,16 @@ if opcion == "📊 Dashboard":
                 st.write("**Detalle por Asesor:**")
                 tabla_planilla = []
                 for asesor, promesa, count, monto in resumen_asesor_planilla:
+                    if promesa == 'PROMESA CAIDA':
+                        estado_icon = '⚠️'
+                    elif promesa == 'A VEN...':
+                        estado_icon = '⏳'
+                    else:
+                        estado_icon = '✅'
+                    
                     tabla_planilla.append({
                         'Asesor': asesor.split()[0] if asesor else 'N/A',  # Nombre corto
-                        'Estado': '⏳' if promesa == 'A VEN...' else '✅',
+                        'Estado': estado_icon,
                         'Monto': f"S/. {monto:,.0f}",
                         'RUCs': count
                     })
@@ -243,15 +503,406 @@ if opcion == "📊 Dashboard":
         st.metric("📋 Total Planilla", f"S/. {total_planilla:,.2f}")
     
     with resumen_col3:
-        st.metric("👥 Total RUCs", total_rucs_gasto + total_rucs_planilla)
+        st.metric("👥 Total RUCs", total_rucs_unicos)
     
     with resumen_col4:
-        registros_fecha = obtener_registros_por_fecha(fecha_filtro)
         st.metric("📝 Registros", len(registros_fecha))
+
+# ======================== RESUMEN DE ASESORES ========================
+elif opcion == "👥 Resumen de Asesores":
+    st.header("👥 Resumen Diario de Asesores")
+    
+    # Filtro de fecha en la barra lateral
+    with st.sidebar:
+        st.markdown("### 📅 Filtros")
+        fecha_filtro_asesores = st.date_input(
+            "Selecciona fecha:",
+            value=date.today(),
+            key="fecha_asesores"
+        )
+    
+    # Obtener datos de asesores
+    resumen_asesores = obtener_resumen_asesores_diario(fecha=fecha_filtro_asesores)
+    
+    # Mostrar fecha seleccionada
+    meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre']
+    mes_nombre = meses[fecha_filtro_asesores.month - 1]
+    fecha_texto = f"{fecha_filtro_asesores.day} de {mes_nombre} de {fecha_filtro_asesores.year}"
+    st.subheader(fecha_texto)
+    
+    if resumen_asesores:
+        # Calcular totales
+        total_general_ga = sum(r[3] for r in resumen_asesores)
+        total_general_planilla = sum(r[4] for r in resumen_asesores)
+        total_general_combined = total_general_ga + total_general_planilla
+        
+        # Mostrar métricas de resumen
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("💵 Total Gasto Admin", f"S/. {total_general_ga:,.2f}")
+        
+        with col2:
+            st.metric("📋 Total Planilla", f"S/. {total_general_planilla:,.2f}")
+        
+        with col3:
+            st.metric("💰 Total Cobrado", f"S/. {total_general_combined:,.2f}")
+        
+        st.markdown("---")
+        
+        # Tabla detallada
+        st.subheader("📊 Desglose por Asesor")
+        
+        tabla_asesores = []
+        for asesor, rucs_ga, rucs_planilla, total_ga, total_planilla in resumen_asesores:
+            total_asesor = total_ga + total_planilla
+            tabla_asesores.append({
+                'Asesor': asesor,
+                'GA (RUCs)': f"{rucs_ga}",
+                'GA (Monto)': f"S/. {total_ga:,.2f}",
+                'Planilla (RUCs)': f"{rucs_planilla}",
+                'Planilla (Monto)': f"S/. {total_planilla:,.2f}",
+                'Total': f"S/. {total_asesor:,.2f}"
+            })
+        
+        df_asesores = pd.DataFrame(tabla_asesores)
+        st.dataframe(df_asesores, use_container_width=True, hide_index=True)
+        
+        # Gráfico de comparación
+        st.markdown("---")
+        st.subheader("📈 Gráficos de Comparación")
+        
+        col_chart1, col_chart2 = st.columns(2)
+        
+        with col_chart1:
+            # Gráfico de barras - Total por asesor
+            datos_chart = []
+            for asesor, rucs_ga, rucs_planilla, total_ga, total_planilla in resumen_asesores:
+                datos_chart.append({
+                    'Asesor': asesor.split()[0] if asesor and asesor != 'SIN ASESOR' else asesor,
+                    'GA': total_ga,
+                    'Planilla': total_planilla
+                })
+            
+            df_chart = pd.DataFrame(datos_chart)
+            st.bar_chart(df_chart.set_index('Asesor'))
+        
+        with col_chart2:
+            # Gráfico de pie - Distribución total
+            datos_pie = []
+            for asesor, rucs_ga, rucs_planilla, total_ga, total_planilla in resumen_asesores:
+                total_asesor = total_ga + total_planilla
+                if total_asesor > 0:
+                    datos_pie.append({
+                        'Asesor': asesor.split()[0] if asesor and asesor != 'SIN ASESOR' else asesor,
+                        'Total': total_asesor
+                    })
+            
+            if datos_pie:
+                df_pie = pd.DataFrame(datos_pie)
+                st.bar_chart(df_pie.set_index('Asesor'))
+    
+    else:
+        st.info("ℹ️ No hay datos de pagos registrados para esta fecha")
+
+# ======================== RANKING DE ASESORES ========================
+elif opcion == "🏆 Ranking de Asesores":
+    st.header("🏆 Ranking de Asesores por Cobros")
+    
+    st.markdown("")
+    
+    # Opciones de período
+    col1, col2 = st.columns([2, 2])
+    
+    with col1:
+        periodo = st.radio(
+            "",
+            ["Hoy", "Este Mes", "Personalizado"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+    
+    st.markdown("")
+    
+    # Determinar rango de fechas según el período seleccionado
+    if periodo == "Hoy":
+        fecha_inicio = date.today()
+        fecha_fin = date.today()
+        titulo_periodo = "Hoy"
+    elif periodo == "Este Mes":
+        hoy = date.today()
+        fecha_inicio = date(hoy.year, hoy.month, 1)
+        fecha_fin = hoy
+        titulo_periodo = f"Enero 2026"  # Mes actual
+    else:  # Personalizado
+        col_fecha1, col_fecha2 = st.columns(2)
+        with col_fecha1:
+            fecha_inicio = st.date_input("📅 Desde:", value=date.today())
+        with col_fecha2:
+            fecha_fin = st.date_input("📅 Hasta:", value=date.today())
+        titulo_periodo = f"{fecha_inicio} a {fecha_fin}"
+    
+    # Obtener ranking
+    ranking = obtener_ranking_asesores(
+        fecha_inicio=fecha_inicio.isoformat(),
+        fecha_fin=fecha_fin.isoformat()
+    )
+    
+    if ranking:
+        # Calcular totales generales
+        total_general = sum(r[6] for r in ranking)
+        total_rucs = sum(r[1] for r in ranking)
+        
+        # Mostrar título con período
+        st.subheader(f"Período: {titulo_periodo}")
+        
+        # Métricas principales
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("💰 Total Cobrado", f"S/. {total_general:,.2f}")
+        
+        with col2:
+            st.metric("👥 Asesores Activos", len(ranking))
+        
+        with col3:
+            st.metric("📦 Total RUCs", total_rucs)
+        
+        st.markdown("---")
+        
+        # Tabla de ranking
+        st.subheader("🥇 Ranking Detallado")
+        
+        tabla_ranking = []
+        for idx, (asesor, total_rucs, rucs_ga, rucs_plan, total_ga, total_plan, total_cobrado) in enumerate(ranking, 1):
+            porcentaje = (total_cobrado / total_general * 100) if total_general > 0 else 0
+            
+            # Medalla
+            if idx == 1:
+                medal = "🥇"
+            elif idx == 2:
+                medal = "🥈"
+            elif idx == 3:
+                medal = "🥉"
+            else:
+                medal = f"#{idx}"
+            
+            tabla_ranking.append({
+                'Posición': medal,
+                'Asesor': asesor,
+                'Total Cobrado': f"S/. {total_cobrado:,.2f}",
+                '% del Total': f"{porcentaje:.1f}%",
+                'RUCs': total_rucs,
+                'GA': f"{rucs_ga} (S/. {total_ga:,.0f})",
+                'Planilla': f"{rucs_plan} (S/. {total_plan:,.0f})"
+            })
+        
+        df_ranking = pd.DataFrame(tabla_ranking)
+        st.dataframe(df_ranking, use_container_width=True, hide_index=True)
+        
+        st.markdown("---")
+        
+        # Gráfico comparativo
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📊 Gráfico de Cobros por Asesor")
+            chart_data = []
+            for asesor, _, _, _, _, _, total_cobrado in ranking:
+                chart_data.append({'Asesor': asesor.split()[0] if asesor and asesor != 'SIN ASESOR' else asesor, 'Cobrado': total_cobrado})
+            
+            if chart_data:
+                df_chart = pd.DataFrame(chart_data)
+                st.bar_chart(df_chart.set_index('Asesor'))
+        
+        with col2:
+            st.subheader("📈 Composición: GA vs Planilla")
+            chart_composicion = []
+            for asesor, _, _, _, total_ga, total_plan, _ in ranking:
+                chart_composicion.append({
+                    'Asesor': asesor.split()[0] if asesor and asesor != 'SIN ASESOR' else asesor,
+                    'GA': total_ga,
+                    'Planilla': total_plan
+                })
+            
+            if chart_composicion:
+                df_comp = pd.DataFrame(chart_composicion)
+                st.bar_chart(df_comp.set_index('Asesor'))
+        
+        st.markdown("---")
+        
+        # Descargar datos
+        csv_ranking = df_ranking.to_csv(index=False)
+        st.download_button(
+            label="📥 Descargar Ranking (CSV)",
+            data=csv_ranking,
+            file_name=f"ranking_asesores_{fecha_inicio.isoformat()}.csv",
+            mime="text/csv"
+        )
+    
+    else:
+        st.info("ℹ️ No hay datos de cobros para el período seleccionado")
+
+# ======================== PROMESAS PENDIENTES ========================
+elif opcion == "⏳ Promesas Pendientes":
+    st.markdown("""
+        <style>
+        .promesa-container {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 10px;
+            color: white;
+            margin-bottom: 20px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+    
+    st.header("⏳ Promesas Pendientes por Cobrar")
+    
+    # Convertir promesas vencidas a PROMESA CAIDA antes de obtener datos
+    detectar_promesas_caidas()
+    
+    # Filtros en la barra lateral
+    with st.sidebar:
+        st.markdown("")
+        fecha_inicio = st.date_input(
+            "📅 Desde:",
+            value=date.today(),
+            key="promesas_inicio"
+        )
+        
+        fecha_fin = st.date_input(
+            "📅 Hasta:",
+            value=date.today() + __import__('datetime').timedelta(days=30),
+            key="promesas_fin"
+        )
+    
+    promesas_pendientes = obtener_promesas_pendientes(
+        fecha_inicio=fecha_inicio.isoformat(),
+        fecha_fin=fecha_fin.isoformat()
+    )
+    
+    if promesas_pendientes:
+        # Convertir A VENCER a PROMESA CAIDA si la fecha ya pasó
+        promesas_pendientes = convertir_a_vencer_a_caidas(promesas_pendientes)
+        
+        # Calcular estadísticas
+        total_promesas = len(promesas_pendientes)
+        
+        # Agrupar por asesor
+        por_asesor = {}
+        for ruc, id_doc, asesor, campana, promesa_ga, promesa_planilla, fecha_pago_pendiente, fecha in promesas_pendientes:
+            if asesor not in por_asesor:
+                por_asesor[asesor] = 0
+            por_asesor[asesor] += 1
+        
+        # Métricas principales con mejor visual
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                "⏳ Promesas Pendientes", 
+                total_promesas,
+                delta=None,
+                delta_color="normal"
+            )
+        
+        with col2:
+            asesores_count = len(por_asesor)
+            st.metric(
+                "👥 Asesores Involucrados", 
+                asesores_count,
+                delta=None
+            )
+        
+        with col3:
+            asesor_top = max(por_asesor.items(), key=lambda x: x[1])[0]
+            asesor_top_count = por_asesor[asesor_top]
+            st.metric("🏆 Mayor Cantidad", f"{asesor_top_count} RUCs")
+        
+        st.divider()
+        
+        # Tabla detallada mejorada
+        st.subheader("📋 Detalle de RUCs con Promesas Pendientes")
+        
+        tabla_pendientes = []
+        for ruc, id_doc, asesor, campana, promesa_ga, promesa_planilla, fecha_pago_pendiente, fecha in promesas_pendientes:
+            promesa_tipo = ""
+            if promesa_ga == "A VEN...":
+                promesa_tipo = "Gastos Admin"
+            elif promesa_planilla == "A VEN...":
+                promesa_tipo = "Planilla"
+            
+            tabla_pendientes.append({
+                'Asesor': asesor if asesor else 'SIN ASESOR',
+                'RUC': ruc,
+                'Campaña': campana,
+                'Tipo Promesa': promesa_tipo.strip(),
+                'Fecha Pago Programada': fecha_pago_pendiente,
+                'Última Fecha': fecha
+            })
+        
+        df_pendientes = pd.DataFrame(tabla_pendientes)
+        
+        # Aplicar estilos a la tabla
+        st.dataframe(
+            df_pendientes, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                'Asesor': st.column_config.TextColumn(width="medium"),
+                'RUC': st.column_config.TextColumn(width="small"),
+                'Campaña': st.column_config.TextColumn(width="small"),
+                'Tipo Promesa': st.column_config.TextColumn(width="medium"),
+                'Fecha Pago Programada': st.column_config.TextColumn(width="small"),
+                'Última Fecha': st.column_config.TextColumn(width="small"),
+            }
+        )
+        
+        # Resumen por asesor
+        st.markdown("---")
+        st.subheader("📊 Resumen por Asesor")
+        
+        tabla_asesor = []
+        for asesor, cantidad in sorted(por_asesor.items(), key=lambda x: x[1], reverse=True):
+            tabla_asesor.append({
+                'Asesor': asesor if asesor else 'SIN ASESOR',
+                'Cantidad de Promesas': cantidad
+            })
+        
+        df_asesor = pd.DataFrame(tabla_asesor)
+        st.dataframe(df_asesor, use_container_width=True, hide_index=True)
+        
+        # Gráfico
+        st.markdown("---")
+        st.subheader("📈 Gráfico de Promesas por Asesor")
+        
+        chart_data = pd.DataFrame({
+            'Asesor': [a if a else 'SIN ASESOR' for a in por_asesor.keys()],
+            'Cantidad': por_asesor.values()
+        }).sort_values('Cantidad', ascending=False)
+        
+        st.bar_chart(chart_data.set_index('Asesor'))
+        
+        # Acción: Descargar lista
+        st.markdown("---")
+        csv_pendientes = df_pendientes.to_csv(index=False)
+        st.download_button(
+            label="📥 Descargar Lista de Pendientes (CSV)",
+            data=csv_pendientes,
+            file_name="promesas_pendientes.csv",
+            mime="text/csv"
+        )
+    
+    else:
+        st.info("ℹ️ No hay promesas pendientes en el rango de fechas seleccionado.")
 
 # ======================== PROMESAS DE HOY ========================
 elif opcion == "🎯 Promesas de Hoy":
     st.header("🎯 Pagos Prometidos para HOY")
+    
+    # Convertir promesas vencidas a PROMESA CAIDA antes de obtener datos
+    detectar_promesas_caidas()
     
     promesas_stats = obtener_estadisticas_promesas_hoy()
     
@@ -284,6 +935,9 @@ elif opcion == "🎯 Promesas de Hoy":
     promesas = obtener_promesas_hoy()
     
     if promesas:
+        # Convertir A VENCER a PROMESA CAIDA si la fecha ya pasó
+        promesas = convertir_a_vencer_a_caidas(promesas)
+        
         df_promesas = pd.DataFrame(promesas, columns=[
             'ID', 'Fecha Reporte', 'RUC', 'ID Doc', 'Campaña', 'Asesor',
             'Promesa', 'Monto', 'Fecha Pago', 'Tipo Pago', 'Observaciones'
@@ -367,7 +1021,24 @@ elif opcion == "📝 Registrar Pago":
         
         st.success(f"✓ RUC encontrado: {ruc_seleccionado[3]}")
         
-        # Opciones de Asesor
+        # Mostrar información adicional del RUC (Deuda Total y Gasto Admin)
+        deuda_total = ruc_seleccionado[6]  # índice 6 = deuda_total
+        gasto_admin = ruc_seleccionado[7]  # índice 7 = gasto_admin
+        
+        col_info1, col_info2 = st.columns(2)
+        with col_info1:
+            if deuda_total and deuda_total > 0:
+                st.metric("💰 Deuda Total", f"S/. {deuda_total:,.2f}")
+            else:
+                st.metric("💰 Deuda Total", "No registrada")
+        
+        with col_info2:
+            if gasto_admin and gasto_admin > 0:
+                st.metric("📊 Gasto Admin", f"S/. {gasto_admin:,.2f}")
+            else:
+                st.metric("📊 Gasto Admin", "No registrada")
+        
+        st.divider()
         asesores_disponibles = obtener_asesores_unicos()
         asesor_original = ruc_seleccionado[5] or ""
         
@@ -407,6 +1078,12 @@ elif opcion == "📝 Registrar Pago":
         with col3:
             fecha_pago_gasto = st.date_input("Fecha de Pago", value=None, key="fecha_gasto")
         
+        # Validar monto de GA
+        if monto_gasto > 0:
+            es_anormal_ga, tipo_ga, msg_ga = detectar_monto_anormal(monto_gasto, 'ga')
+            if es_anormal_ga:
+                st.warning(msg_ga)
+        
         st.markdown("---")
         st.subheader("📊 Planilla")
         
@@ -421,6 +1098,12 @@ elif opcion == "📝 Registrar Pago":
             monto_planilla = st.number_input("Monto Planilla", min_value=0.0, value=0.0, step=0.01)
         with col3:
             fecha_pago_planilla = st.date_input("Fecha de Pago", value=None, key="fecha_plan")
+        
+        # Validar monto de Planilla
+        if monto_planilla > 0:
+            es_anormal_plan, tipo_plan, msg_plan = detectar_monto_anormal(monto_planilla, 'planilla')
+            if es_anormal_plan:
+                st.warning(msg_plan)
         
         st.markdown("---")
         col1, col2 = st.columns([3, 1])
@@ -444,7 +1127,8 @@ elif opcion == "📝 Registrar Pago":
                     fecha_pago_gasto_str = fecha_pago_gasto.isoformat() if fecha_pago_gasto else None
                     fecha_pago_planilla_str = fecha_pago_planilla.isoformat() if fecha_pago_planilla else None
                     
-                    registro_id = registrar_pago(
+                    # VALIDAR DUPLICADOS EXACTOS
+                    es_duplicado, id_dup, msg_dup = detectar_duplicado_exacto(
                         fecha_reporte=fecha_reporte.isoformat(),
                         ruc=st.session_state.ruc_registrado,
                         id_documento=id_documento,
@@ -459,29 +1143,51 @@ elif opcion == "📝 Registrar Pago":
                         observaciones=observaciones
                     )
                     
-                    st.success(f"✅ ¡Pago registrado exitosamente!")
-                    st.balloons()
-                    
-                    # Mostrar resumen
-                    st.markdown("---")
-                    st.subheader("📋 Resumen del Registro")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("ID Registro", registro_id)
-                    with col2:
-                        st.metric("Total Cobrado", f"S/. {(monto_gasto_val or 0) + (monto_planilla_val or 0):,.2f}")
-                    with col3:
-                        st.metric("RUC", st.session_state.ruc_registrado)
-                    
-                    st.info(f"👤 Asesor: {asesor} | 📊 Campaña: {campaña}")
-                    
-                    # Limpiar formulario para nuevo registro
-                    import time
-                    time.sleep(2)  # Mostrar el resumen por 2 segundos
-                    st.session_state.ruc_registrado = None
-                    st.session_state.ruc_info_encontrada = None
-                    st.rerun()
+                    if es_duplicado:
+                        st.warning(f"⚠️ **ALERTA DE DUPLICADO**\n\n{msg_dup}\n\n"
+                                  f"Los datos del registro que intentas crear ya existen en la BD.\n\n"
+                                  f"📅 Fecha: {fecha_reporte}\n"
+                                  f"🔢 RUC: {st.session_state.ruc_registrado}\n"
+                                  f"👤 Asesor: {asesor}")
+                    else:
+                        registro_id = registrar_pago(
+                            fecha_reporte=fecha_reporte.isoformat(),
+                            ruc=st.session_state.ruc_registrado,
+                            id_documento=id_documento,
+                            campaña=campaña,
+                            asesor=asesor,
+                            promesa_ga=promesa_ga_val,
+                            monto_gasto=monto_gasto_val,
+                            fecha_pago_gasto=fecha_pago_gasto_str,
+                            promesa_planilla=promesa_planilla_val,
+                            monto_planilla=monto_planilla_val,
+                            fecha_pago_planilla=fecha_pago_planilla_str,
+                            observaciones=observaciones
+                        )
+                        
+                        st.success(f"✅ ¡Pago registrado exitosamente!")
+                        st.balloons()
+                        
+                        # Mostrar resumen
+                        st.markdown("---")
+                        st.subheader("📋 Resumen del Registro")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("ID Registro", registro_id)
+                        with col2:
+                            st.metric("Total Cobrado", f"S/. {(monto_gasto_val or 0) + (monto_planilla_val or 0):,.2f}")
+                        with col3:
+                            st.metric("RUC", st.session_state.ruc_registrado)
+                        
+                        st.info(f"👤 Asesor: {asesor} | 📊 Campaña: {campaña}")
+                        
+                        # Limpiar formulario para nuevo registro
+                        import time
+                        time.sleep(2)  # Mostrar el resumen por 2 segundos
+                        st.session_state.ruc_registrado = None
+                        st.session_state.ruc_info_encontrada = None
+                        st.rerun()
                 
                 except Exception as e:
                     st.error(f"❌ Error al registrar: {str(e)}")
@@ -512,16 +1218,19 @@ elif opcion == "📋 Ver Registros":
         st.subheader("Todos los registros")
     
     if registros:
+        # Convertir A VENCER a PROMESA CAIDA si la fecha ya pasó
+        registros = convertir_a_vencer_a_caidas(registros)
+        
         # Crear DataFrame
         df = pd.DataFrame(registros, columns=[
             'ID', 'Fecha Reporte', 'RUC', 'ID Doc', 'Campaña', 'Asesor',
-            'Promesa GA', 'Monto Gasto', 'Fecha Pago Gasto',
+            'Promesa Gastos Admin', 'Monto Gastos Admin', 'Fecha Pago Gastos Admin',
             'Promesa Planilla', 'Monto Planilla', 'Fecha Pago Planilla',
             'Observaciones'
         ])
         
         # Formatear montos
-        for col in ['Monto Gasto', 'Monto Planilla']:
+        for col in ['Monto Gastos Admin', 'Monto Planilla']:
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: f"S/. {x:,.2f}" if pd.notna(x) and x > 0 else "-")
         
@@ -538,70 +1247,228 @@ elif opcion == "📋 Ver Registros":
             st.metric("IDs de Registros", f"{', '.join(map(str, [r[0] for r in registros]))}")
         
         st.divider()
-        st.subheader("🗑️ Eliminar Registro")
         
-        # Inicializar session state para contraseña
-        if 'contraseña_correcta' not in st.session_state:
-            st.session_state.contraseña_correcta = False
+        # Tabs para Editar y Eliminar
+        tab_editar, tab_eliminar = st.tabs(["✏️ Editar Registro", "🗑️ Eliminar Registro"])
         
-        # Solicitar contraseña
-        if not st.session_state.contraseña_correcta:
-            col_pass1, col_pass2 = st.columns([3, 1])
+        # ========== TAB EDITAR ==========
+        with tab_editar:
+            st.subheader("✏️ Editar Registro")
             
-            with col_pass1:
-                contraseña = st.text_input(
-                    "🔐 Ingresa la contraseña para eliminar registros:",
-                    type="password",
-                    placeholder="Contraseña requerida"
-                )
+            # Inicializar session state para contraseña de edición
+            if 'contraseña_editar_correcta' not in st.session_state:
+                st.session_state.contraseña_editar_correcta = False
             
-            with col_pass2:
-                st.markdown("")
-                st.markdown("")
-                if st.button("✅ Verificar", use_container_width=True):
-                    if contraseña == "calidad":
-                        st.session_state.contraseña_correcta = True
-                        st.success("✓ Contraseña correcta")
-                        st.rerun()
-                    else:
-                        st.error("❌ Contraseña incorrecta")
-        
-        # Si contraseña es correcta, mostrar opciones de eliminación
-        if st.session_state.contraseña_correcta:
-            st.success("🔓 Acceso desbloqueado")
-            st.warning("⚠️ Estás en modo de eliminación. Sé cuidadoso.")
-            
-            col_elim1, col_elim2, col_elim3 = st.columns([2, 1, 1])
-            
-            with col_elim1:
-                id_registro = st.number_input(
-                    "Ingresa el ID del registro a eliminar:",
-                    min_value=1,
-                    value=None,
-                    help="Puedes ver el ID en la primera columna de la tabla"
-                )
-            
-            with col_elim2:
-                st.markdown("")
-                st.markdown("")
-                if st.button("🗑️ Eliminar", use_container_width=True, type="secondary"):
-                    if id_registro:
-                        try:
-                            eliminar_registro(int(id_registro))
-                            st.success(f"✓ Registro ID {id_registro} eliminado correctamente")
-                            st.session_state.contraseña_correcta = False
+            # Solicitar contraseña
+            if not st.session_state.contraseña_editar_correcta:
+                col_pass1, col_pass2 = st.columns([3, 1])
+                
+                with col_pass1:
+                    contraseña_edit = st.text_input(
+                        "🔐 Ingresa la contraseña para editar registros:",
+                        type="password",
+                        placeholder="Contraseña requerida",
+                        key="pass_editar"
+                    )
+                
+                with col_pass2:
+                    st.markdown("")
+                    st.markdown("")
+                    if st.button("✅ Verificar", use_container_width=True, key="btn_verify_edit"):
+                        if contraseña_edit == "calidad":
+                            st.session_state.contraseña_editar_correcta = True
+                            st.success("✓ Contraseña correcta")
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Error al eliminar: {e}")
-                    else:
-                        st.warning("⚠️ Por favor ingresa un ID válido")
+                        else:
+                            st.error("❌ Contraseña incorrecta")
             
-            with col_elim3:
-                st.markdown("")
-                st.markdown("")
-                if st.button("Cerrar", use_container_width=True):
-                    st.session_state.contraseña_correcta = False
-                    st.rerun()
+            # Si contraseña es correcta, mostrar opciones de edición
+            if st.session_state.contraseña_editar_correcta:
+                st.success("🔓 Acceso desbloqueado")
+                st.info("ℹ️ Realiza los cambios necesarios en los campos:")
+                
+                # Seleccionar registro a editar
+                id_editar = st.selectbox(
+                    "Selecciona el ID del registro a editar:",
+                    options=[r[0] for r in registros],
+                    help="Elige el ID que deseas modificar",
+                    key="select_id_edit"
+                )
+                
+                # Obtener datos del registro seleccionado
+                registro_actual = next((r for r in registros if r[0] == id_editar), None)
+                
+                if registro_actual:
+                    st.info(f"📋 Editando registro ID: {id_editar}")
+                    
+                    # Crear formulario de edición
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        promesa_ga_edit = st.text_input(
+                            "Promesa GA:",
+                            value=registro_actual[6] or "",
+                            help="Ej: A VENCER, COBRADO, etc.",
+                            key="promesa_ga_edit"
+                        )
+                        
+                        monto_gasto_edit = st.number_input(
+                            "Monto Gasto Admin:",
+                            value=float(registro_actual[7]) if registro_actual[7] else 0.0,
+                            step=0.01,
+                            key="monto_gasto_edit"
+                        )
+                        
+                        fecha_pago_gasto_edit = st.date_input(
+                            "Fecha Pago Gasto:",
+                            value=datetime.strptime(registro_actual[8], '%Y-%m-%d').date() if registro_actual[8] else date.today(),
+                            format="YYYY-MM-DD",
+                            key="fecha_gasto_edit"
+                        )
+                    
+                    with col2:
+                        promesa_planilla_edit = st.text_input(
+                            "Promesa Planilla:",
+                            value=registro_actual[9] or "",
+                            help="Ej: A VENCER, COBRADO, etc.",
+                            key="promesa_planilla_edit"
+                        )
+                        
+                        monto_planilla_edit = st.number_input(
+                            "Monto Planilla:",
+                            value=float(registro_actual[10]) if registro_actual[10] else 0.0,
+                            step=0.01,
+                            key="monto_planilla_edit"
+                        )
+                        
+                        fecha_pago_planilla_edit = st.date_input(
+                            "Fecha Pago Planilla:",
+                            value=datetime.strptime(registro_actual[11], '%Y-%m-%d').date() if registro_actual[11] else date.today(),
+                            format="YYYY-MM-DD",
+                            key="fecha_planilla_edit"
+                        )
+                    
+                    observaciones_edit = st.text_area(
+                        "Observaciones:",
+                        value=registro_actual[12] or "",
+                        height=80,
+                        key="obs_edit"
+                    )
+                    
+                    # Botones de acción para editar
+                    col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+                    
+                    with col_btn1:
+                        if st.button("✅ Guardar Cambios", use_container_width=True, type="primary", key="btn_save_edit"):
+                            try:
+                                # Actualizar registro
+                                conn = sqlite3.connect("pagos.db")
+                                cursor = conn.cursor()
+                                
+                                cursor.execute('''
+                                UPDATE registros_pagos 
+                                SET promesa_ga = ?, monto_gasto = ?, fecha_pago_gasto = ?,
+                                    promesa_planilla = ?, monto_planilla = ?, fecha_pago_planilla = ?,
+                                    observaciones = ?
+                                WHERE id = ?
+                                ''', (
+                                    promesa_ga_edit if promesa_ga_edit else None,
+                                    monto_gasto_edit if monto_gasto_edit > 0 else None,
+                                    fecha_pago_gasto_edit.strftime('%Y-%m-%d') if promesa_ga_edit else None,
+                                    promesa_planilla_edit if promesa_planilla_edit else None,
+                                    monto_planilla_edit if monto_planilla_edit > 0 else None,
+                                    fecha_pago_planilla_edit.strftime('%Y-%m-%d') if promesa_planilla_edit else None,
+                                    observaciones_edit,
+                                    id_editar
+                                ))
+                                
+                                conn.commit()
+                                conn.close()
+                                
+                                st.success(f"✓ Registro ID {id_editar} actualizado correctamente")
+                                st.session_state.contraseña_editar_correcta = False
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Error al actualizar: {e}")
+                    
+                    with col_btn2:
+                        if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_edit"):
+                            st.session_state.contraseña_editar_correcta = False
+                            st.rerun()
+                    
+                    with col_btn3:
+                        st.markdown("")
+                        st.markdown("")
+                        if st.button("Cerrar", use_container_width=True, key="btn_close_edit"):
+                            st.session_state.contraseña_editar_correcta = False
+                            st.rerun()
+        
+        # ========== TAB ELIMINAR ==========
+        with tab_eliminar:
+            st.subheader("🗑️ Eliminar Registro")
+            
+            # Inicializar session state para contraseña
+            if 'contraseña_correcta' not in st.session_state:
+                st.session_state.contraseña_correcta = False
+            
+            # Solicitar contraseña
+            if not st.session_state.contraseña_correcta:
+                col_pass1, col_pass2 = st.columns([3, 1])
+                
+                with col_pass1:
+                    contraseña = st.text_input(
+                        "🔐 Ingresa la contraseña para eliminar registros:",
+                        type="password",
+                        placeholder="Contraseña requerida"
+                    )
+                
+                with col_pass2:
+                    st.markdown("")
+                    st.markdown("")
+                    if st.button("✅ Verificar", use_container_width=True):
+                        if contraseña == "calidad":
+                            st.session_state.contraseña_correcta = True
+                            st.success("✓ Contraseña correcta")
+                            st.rerun()
+                        else:
+                            st.error("❌ Contraseña incorrecta")
+            
+            # Si contraseña es correcta, mostrar opciones de eliminación
+            if st.session_state.contraseña_correcta:
+                st.success("🔓 Acceso desbloqueado")
+                st.warning("⚠️ Estás en modo de eliminación. Sé cuidadoso.")
+                
+                col_elim1, col_elim2, col_elim3 = st.columns([2, 1, 1])
+                
+                with col_elim1:
+                    id_registro = st.number_input(
+                        "Ingresa el ID del registro a eliminar:",
+                        min_value=1,
+                        value=None,
+                        help="Puedes ver el ID en la primera columna de la tabla"
+                    )
+                
+                with col_elim2:
+                    st.markdown("")
+                    st.markdown("")
+                    if st.button("🗑️ Eliminar", use_container_width=True, type="secondary"):
+                        if id_registro:
+                            try:
+                                eliminar_registro(int(id_registro))
+                                st.success(f"✓ Registro ID {id_registro} eliminado correctamente")
+                                st.session_state.contraseña_correcta = False
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Error al eliminar: {e}")
+                        else:
+                            st.warning("⚠️ Por favor ingresa un ID válido")
+                
+                with col_elim3:
+                    st.markdown("")
+                    st.markdown("")
+                    if st.button("Cerrar", use_container_width=True):
+                        st.session_state.contraseña_correcta = False
+                        st.rerun()
     else:
         st.info("ℹ️ No hay registros en la fecha seleccionada")
 
