@@ -442,3 +442,36 @@ def obtener_resumen_total_por_promesa(tipo_pago='gasto', fecha=None):
     
     return resultados
 
+
+def obtener_resumen_diario_asesores(fecha=None):
+    """
+    Obtiene resumen diario por asesor con totales de GA y Planilla
+    Retorna: [(asesor, total_ga, count_ga, total_planilla, count_planilla, total_general)]
+    """
+    if fecha is None:
+        fecha = date.today().isoformat()
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+    SELECT 
+        asesor,
+        SUM(CASE WHEN monto_gasto > 0 THEN monto_gasto ELSE 0 END) as total_ga,
+        COUNT(CASE WHEN monto_gasto > 0 THEN 1 END) as count_ga,
+        SUM(CASE WHEN monto_planilla > 0 THEN monto_planilla ELSE 0 END) as total_planilla,
+        COUNT(CASE WHEN monto_planilla > 0 THEN 1 END) as count_planilla,
+        SUM(COALESCE(monto_gasto, 0)) + SUM(COALESCE(monto_planilla, 0)) as total_general
+    FROM registros_pagos
+    WHERE (fecha_pago_gasto = ? OR fecha_pago_planilla = ?) 
+        AND (monto_gasto > 0 OR monto_planilla > 0)
+    GROUP BY asesor
+    ORDER BY total_general DESC, asesor
+    ''', (fecha, fecha))
+    
+    resultados = cursor.fetchall()
+    conn.close()
+    
+    return resultados
+
+

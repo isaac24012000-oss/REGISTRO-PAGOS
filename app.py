@@ -26,7 +26,8 @@ from database import (
     obtener_promesas_hoy,
     obtener_estadisticas_promesas_hoy,
     obtener_resumen_por_asesor_promesa,
-    obtener_resumen_total_por_promesa
+    obtener_resumen_total_por_promesa,
+    obtener_resumen_diario_asesores
 )
 
 # Configuración
@@ -248,6 +249,43 @@ if opcion == "📊 Dashboard":
     with resumen_col4:
         registros_fecha = obtener_registros_por_fecha(fecha_filtro)
         st.metric("📝 Registros", len(registros_fecha))
+    
+    st.markdown("---")
+    
+    # ===== RESUMEN DIARIO POR ASESOR =====
+    st.subheader("👥 Resumen Diario por Asesor")
+    
+    resumen_asesores = obtener_resumen_diario_asesores(fecha=fecha_filtro)
+    
+    if resumen_asesores:
+        # Crear tabla de asesores
+        tabla_asesores = []
+        for asesor, total_ga, count_ga, total_planilla, count_planilla, total_general in resumen_asesores:
+            tabla_asesores.append({
+                '👤 Asesor': asesor if asesor else 'Sin Asignar',
+                '💵 Gasto': f"S/. {total_ga:,.2f}",
+                '🎯 RUCs GA': int(count_ga) if count_ga else 0,
+                '📋 Planilla': f"S/. {total_planilla:,.2f}",
+                '🎯 RUCs Plan': int(count_planilla) if count_planilla else 0,
+                '💎 Total': f"S/. {total_general:,.2f}"
+            })
+        
+        df_asesores = pd.DataFrame(tabla_asesores)
+        st.dataframe(df_asesores, use_container_width=True, hide_index=True)
+        
+        # Ranking visual
+        st.markdown("")
+        st.write("**🏆 Ranking de Asesores (por total cobrado)**")
+        
+        for idx, (asesor, total_ga, count_ga, total_planilla, count_planilla, total_general) in enumerate(resumen_asesores, 1):
+            medalla = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"#{idx}"
+            col1, col2 = st.columns([1, 5])
+            with col1:
+                st.metric(medalla, f"S/. {total_general:,.2f}")
+            with col2:
+                st.write(f"**{asesor if asesor else 'Sin Asignar'}** - GA: S/. {total_ga:,.2f} | Planilla: S/. {total_planilla:,.2f}")
+    else:
+        st.info("ℹ️ No hay registros de asesores para esta fecha")
 
 # ======================== PROMESAS DE HOY ========================
 elif opcion == "🎯 Promesas de Hoy":
