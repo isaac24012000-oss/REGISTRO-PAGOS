@@ -159,6 +159,23 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# JavaScript para cerrar el sidebar automáticamente
+st.markdown("""
+    <script>
+    function closeSidebar() {
+        const buttons = document.querySelectorAll('button');
+        for (let button of buttons) {
+            const ariaLabel = button.getAttribute('aria-label');
+            if (ariaLabel && ariaLabel.includes('Toggle')) {
+                button.click();
+                break;
+            }
+        }
+    }
+    setTimeout(closeSidebar, 100);
+    </script>
+""", unsafe_allow_html=True)
+
 # Inicializar BD
 init_db()
 
@@ -196,17 +213,16 @@ if 'pagina_actual' not in st.session_state:
 
 # Título principal
 st.title("💰 Sistema de Registro de Pagos Diarios")
-st.markdown("---")
-st.markdown("")
 
-# Menú de navegación con botones
-st.markdown("""
-    <div style='background: linear-gradient(135deg, #E3F2FD 0%, #F0F8FF 100%); 
-                border-radius: 12px; padding: 20px; margin: 10px 0;
-                border-left: 5px solid #4A90E2;'>
-        <h3 style='margin: 0 0 15px 0; color: #357ABD;'>🎯 Selecciona una sección:</h3>
-    </div>
-""", unsafe_allow_html=True)
+# Botón Registrar Pago flotante a la derecha
+col_title, col_btn = st.columns([0.85, 0.15])
+with col_btn:
+    if st.button("📝 Registrar\nPago", use_container_width=True, 
+                help="Registrar nuevo pago"):
+        st.session_state.pagina_actual = "📝 Registrar Pago"
+        st.rerun()
+
+st.markdown("---")
 
 menu_opciones = [
     "📊 Dashboard",
@@ -214,8 +230,7 @@ menu_opciones = [
     "🏆 Ranking de Asesores",
     "⏳ Promesas Pendientes",
     "🎯 Promesas de Hoy",
-    "📝 Registrar Pago",
-    "📋 Ver Registros",
+    " Ver Registros",
     "📂 Exportar Datos"
 ]
 
@@ -231,60 +246,25 @@ colores_botones = {
     "📂 Exportar Datos": "#FFC107"
 }
 
-# Crear 3 columnas de botones x 3 filas
-col1, col2, col3 = st.columns(3)
-
-botones = [
-    (col1, menu_opciones[0]),
-    (col2, menu_opciones[1]),
-    (col3, menu_opciones[2]),
-]
-
-for col, opcion_btn in botones:
-    with col:
-        color = colores_botones[opcion_btn]
-        if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
-                    help=f"Ir a {opcion_btn}"):
-            st.session_state.pagina_actual = opcion_btn
-            st.rerun()
-
-col1, col2, col3 = st.columns(3)
-
-botones2 = [
-    (col1, menu_opciones[3]),
-    (col2, menu_opciones[4]),
-    (col3, menu_opciones[5]),
-]
-
-for col, opcion_btn in botones2:
-    with col:
-        color = colores_botones[opcion_btn]
-        if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
-                    help=f"Ir a {opcion_btn}"):
-            st.session_state.pagina_actual = opcion_btn
-            st.rerun()
-
-col1, col2 = st.columns(2)
-
-botones3 = [
-    (col1, menu_opciones[6]),
-    (col2, menu_opciones[7]),
-]
-
-for col, opcion_btn in botones3:
-    with col:
-        color = colores_botones[opcion_btn]
-        if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
-                    help=f"Ir a {opcion_btn}"):
-            st.session_state.pagina_actual = opcion_btn
-            st.rerun()
-
-st.divider()
-
-opcion = st.session_state.pagina_actual
-
 # Sidebar
 with st.sidebar:
+    st.markdown("""
+        <div style='background: linear-gradient(135deg, #E3F2FD 0%, #F0F8FF 100%); 
+                    border-radius: 12px; padding: 15px; margin: 10px 0;
+                    border-left: 5px solid #4A90E2;'>
+            <h3 style='margin: 0; color: #357ABD;'>🎯 Menú</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    st.markdown("")
+    
+    # Botones de navegación en el sidebar
+    for opcion_btn in menu_opciones:
+        if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
+                    help=f"Ir a {opcion_btn}"):
+            st.session_state.pagina_actual = opcion_btn
+            st.rerun()
+    
+    st.divider()
     st.markdown("**📅 FILTROS**")
     st.markdown("")
     
@@ -298,6 +278,8 @@ with st.sidebar:
     
     st.divider()
     st.markdown("")
+
+opcion = st.session_state.pagina_actual
 
 # ======================== DASHBOARD ========================
 if opcion == "📊 Dashboard":
@@ -1075,12 +1057,6 @@ elif opcion == "📝 Registrar Pago":
         with col3:
             fecha_pago_gasto = st.date_input("Fecha de Pago", value=None, key="fecha_gasto")
         
-        # Validar monto de GA
-        if monto_gasto > 0:
-            es_anormal_ga, tipo_ga, msg_ga = detectar_monto_anormal(monto_gasto, 'ga')
-            if es_anormal_ga:
-                st.warning(msg_ga)
-        
         st.markdown("---")
         st.subheader("📊 Planilla")
         
@@ -1095,12 +1071,6 @@ elif opcion == "📝 Registrar Pago":
             monto_planilla = st.number_input("Monto Planilla", min_value=0.0, value=0.0, step=0.01)
         with col3:
             fecha_pago_planilla = st.date_input("Fecha de Pago", value=None, key="fecha_plan")
-        
-        # Validar monto de Planilla
-        if monto_planilla > 0:
-            es_anormal_plan, tipo_plan, msg_plan = detectar_monto_anormal(monto_planilla, 'planilla')
-            if es_anormal_plan:
-                st.warning(msg_plan)
         
         st.markdown("---")
         col1, col2 = st.columns([3, 1])
@@ -1178,6 +1148,13 @@ elif opcion == "📝 Registrar Pago":
                             st.metric("RUC", st.session_state.ruc_registrado)
                         
                         st.info(f"👤 Asesor: {asesor} | 📊 Campaña: {campaña}")
+                        
+                        # Esperar 2 segundos y redirigir al dashboard
+                        st.info("⏳ Redirigiendo al Dashboard en 2 segundos...")
+                        import time
+                        time.sleep(2)
+                        st.session_state.pagina_actual = "📊 Dashboard"
+                        st.rerun()
                         
                         # Limpiar formulario para nuevo registro
                         import time

@@ -667,15 +667,59 @@ def obtener_estadisticas_montos():
         'planilla': stats_plan if stats_plan[0] else (0, 0, 0, 0)
     }
 
-def detectar_monto_anormal(monto, tipo_pago='ga'):
+def detectar_monto_anormal(monto, tipo_pago='ga', ruc=None):
     """
     Detecta si un monto es anormalmente alto o bajo
+    Si se proporciona RUC, compara contra el saldo del RUC específico
+    Si no hay RUC, compara contra el promedio general
     tipo_pago: 'ga' o 'planilla'
     Retorna: (es_anormal, tipo_anomalia, mensaje)
     """
     if monto <= 0:
         return False, None, None
     
+    # Si se proporciona RUC, comparar contra su saldo específico
+    if ruc:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        if tipo_pago == 'ga':
+            cursor.execute('SELECT SUM(monto_gasto) FROM registros_pagos WHERE ruc = ? AND promesa_ga != "COBRADO"', (ruc,))
+        else:
+            cursor.execute('SELECT SUM(monto_planilla) FROM registros_pagos WHERE ruc = ? AND promesa_planilla != "COBRADO"', (ruc,))
+        
+        resultado = cursor.fetchone()
+        conn.close()
+        
+        saldo_ruc = resultado[0] if resultado[0] else 0
+        
+        # Si hay saldo del RUC, comparar contra él
+        if saldo_ruc > 0:
+            # El monto no debería ser significativamente menor al saldo
+            rango_bajo = saldo_ruc * 0.1  # Al menos 10% del saldo
+            rango_alto = saldo_ruc * 1.5  # No más de 150% del saldo
+            
+            if monto < rango_bajo:
+                porcentaje = (monto / saldo_ruc * 100) if saldo_ruc > 0 else 0
+                return True, "BAJO", (
+                    f"⚠️ **Monto ANORMALMENTE BAJO**\n\n"
+                    f"Monto ingresado: S/. {monto:,.2f}\n"
+                    f"Saldo del RUC: S/. {saldo_ruc:,.2f}\n"
+                    f"Porcentaje del saldo: {porcentaje:.1f}%\n\n"
+                    f"Este monto es solo el **{porcentaje:.0f}%** del saldo del RUC."
+                )
+            
+            elif monto > rango_alto:
+                porcentaje = (monto / saldo_ruc * 100) if saldo_ruc > 0 else 0
+                return True, "ALTO", (
+                    f"⚠️ **Monto ANORMALMENTE ALTO**\n\n"
+                    f"Monto ingresado: S/. {monto:,.2f}\n"
+                    f"Saldo del RUC: S/. {saldo_ruc:,.2f}\n"
+                    f"Porcentaje del saldo: {porcentaje:.1f}%\n\n"
+                    f"Este monto es el **{porcentaje:.0f}%** del saldo del RUC."
+                )
+    
+    # Fallback: comparar contra el promedio general
     stats = obtener_estadisticas_montos()
     
     if tipo_pago == 'ga':
