@@ -1207,11 +1207,7 @@ elif opcion == "📋 Ver Registros":
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: f"S/. {x:,.2f}" if pd.notna(x) and x > 0 else "-")
         
-        # Opción para ajustar la altura dinámicamente
-        altura = min(600, 50 + (len(registros) * 35))
-        st.dataframe(df, use_container_width=True, height=altura)
-        
-        # Botones de acción
+        # Mostrar estadísticas primero
         st.markdown("---")
         col1, col2, col3 = st.columns(3)
         
@@ -1219,9 +1215,15 @@ elif opcion == "📋 Ver Registros":
             st.metric("Total de Registros", len(registros))
         
         with col2:
-            st.metric("IDs de Registros", f"{', '.join(map(str, [r[0] for r in registros]))}")
+            st.metric("IDs de Registros", f"{', '.join(map(str, [r[0] for r in registros][:5]))}...")
+        
+        with col3:
+            st.metric("Registros Mostrados", f"{len(df)}")
         
         st.divider()
+        
+        # Mostrar dataframe sin límite de altura para ver todos los registros
+        st.dataframe(df, use_container_width=True)
         
         # Tabs para Editar y Eliminar
         tab_editar, tab_eliminar = st.tabs(["✏️ Editar Registro", "🗑️ Eliminar Registro"])

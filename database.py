@@ -178,8 +178,8 @@ def obtener_registros_por_fecha(fecha):
     
     cursor.execute('''
     SELECT id, fecha_reporte, ruc, id_documento, campaña, asesor,
-           promesa_ga, monto_gasto, fecha_pago_gasto,
-           promesa_planilla, monto_planilla, fecha_pago_planilla,
+           promesa_ga, monto_gasto, fecha_pago_gasto, estado_ga,
+           promesa_planilla, monto_planilla, fecha_pago_planilla, estado_planilla,
            observaciones
     FROM registros_pagos
     WHERE fecha_reporte = ?
@@ -202,8 +202,8 @@ def obtener_todos_registros():
     
     cursor.execute('''
     SELECT id, fecha_reporte, ruc, id_documento, campaña, asesor,
-           promesa_ga, monto_gasto, fecha_pago_gasto,
-           promesa_planilla, monto_planilla, fecha_pago_planilla,
+           promesa_ga, monto_gasto, fecha_pago_gasto, estado_ga,
+           promesa_planilla, monto_planilla, fecha_pago_planilla, estado_planilla,
            observaciones
     FROM registros_pagos
     ORDER BY fecha_reporte DESC, ruc
