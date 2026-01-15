@@ -226,22 +226,23 @@ st.markdown("---")
 
 menu_opciones = [
     "📊 Dashboard",
+    "� Registrar Pago",
     "👥 Resumen de Asesores",
     "🏆 Ranking de Asesores",
     "⏳ Promesas Pendientes",
     "🎯 Promesas de Hoy",
-    " Ver Registros",
+    "📋 Ver Registros",
     "📂 Exportar Datos"
 ]
 
 # Colores para cada botón
 colores_botones = {
     "📊 Dashboard": "#4A90E2",
+    "📝 Registrar Pago": "#2196F3",
     "👥 Resumen de Asesores": "#9C27B0",
     "🏆 Ranking de Asesores": "#FF9800",
     "⏳ Promesas Pendientes": "#F44336",
     "🎯 Promesas de Hoy": "#E91E63",
-    "📝 Registrar Pago": "#2196F3",
     "📋 Ver Registros": "#009688",
     "📂 Exportar Datos": "#FFC107"
 }
