@@ -224,14 +224,9 @@ with col_btn:
 
 st.markdown("---")
 
-# Menu de usuario (visible siempre)
-menu_usuario = [
+menu_opciones = [
     "📊 Dashboard",
-    "📝 Registrar Pago"
-]
-
-# Menu de administrador (requiere contrasena)
-menu_admin = [
+    "� Registrar Pago",
     "👥 Resumen de Asesores",
     "🏆 Ranking de Asesores",
     "⏳ Promesas Pendientes",
@@ -252,71 +247,26 @@ colores_botones = {
     "📂 Exportar Datos": "#FFC107"
 }
 
-# Inicializar sesion de modo admin
-if 'modo_admin' not in st.session_state:
-    st.session_state.modo_admin = False
-
 # Sidebar
 with st.sidebar:
     st.markdown("""
         <div style='background: linear-gradient(135deg, #E3F2FD 0%, #F0F8FF 100%); 
                     border-radius: 12px; padding: 15px; margin: 10px 0;
                     border-left: 5px solid #4A90E2;'>
-            <h3 style='margin: 0; color: #357ABD;'>🎯 Menu Principal</h3>
+            <h3 style='margin: 0; color: #357ABD;'>🎯 Menú</h3>
         </div>
     """, unsafe_allow_html=True)
     st.markdown("")
     
-    # Botones de menu de usuario
-    for opcion_btn in menu_usuario:
+    # Botones de navegación en el sidebar
+    for opcion_btn in menu_opciones:
         if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
                     help=f"Ir a {opcion_btn}"):
             st.session_state.pagina_actual = opcion_btn
             st.rerun()
     
     st.divider()
-    
-    # Menu de administrador con proteccion
-    st.markdown("""
-        <div style='background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%); 
-                    border-radius: 12px; padding: 15px; margin: 10px 0;
-                    border-left: 5px solid #FF9800;'>
-            <h3 style='margin: 0; color: #E65100;'>🔐 Menu Administrador</h3>
-        </div>
-    """, unsafe_allow_html=True)
-    st.markdown("")
-    
-    if not st.session_state.modo_admin:
-        # Solicitar contrasena para acceder al menu admin
-        contrasena_admin = st.text_input("🔑 Contrasena Admin:", type="password", key="pass_admin_menu")
-        
-        if st.button("🔓 Desbloquear Menu Admin", use_container_width=True):
-            if contrasena_admin == "calidad":
-                st.session_state.modo_admin = True
-                st.success("Modo Administrador activado")
-                st.rerun()
-            else:
-                st.error("Contrasena incorrecta")
-    
-    else:
-        # Mostrar botones de menu admin
-        for opcion_btn in menu_admin:
-            if st.button(opcion_btn, use_container_width=True, key=f"btn_{opcion_btn}",
-                        help=f"Ir a {opcion_btn}"):
-                st.session_state.pagina_actual = opcion_btn
-                st.rerun()
-        
-        st.divider()
-        
-        # Boton para cerrar sesion admin
-        if st.button("🔒 Cerrar Sesion Admin", use_container_width=True):
-            st.session_state.modo_admin = False
-            st.session_state.pagina_actual = "📊 Dashboard"
-            st.info("Sesion de administrador cerrada")
-            st.rerun()
-    
-    st.divider()
-    st.markdown("**📅 ESTADO**")
+    st.markdown("**📅 FILTROS**")
     st.markdown("")
     
     # Mostrar estado de la BD
@@ -325,7 +275,7 @@ with st.sidebar:
     with col1:
         st.metric("📊 Registros", registros_total)
     with col2:
-        st.info("Guardado")
+        st.info("✓ Guardado")
     
     st.divider()
     st.markdown("")
