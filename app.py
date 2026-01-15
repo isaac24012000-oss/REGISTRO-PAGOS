@@ -1197,8 +1197,8 @@ elif opcion == "📋 Ver Registros":
         # Crear DataFrame
         df = pd.DataFrame(registros, columns=[
             'ID', 'Fecha Reporte', 'RUC', 'ID Doc', 'Campaña', 'Asesor',
-            'Promesa Gastos Admin', 'Monto Gastos Admin', 'Fecha Pago Gastos Admin',
-            'Promesa Planilla', 'Monto Planilla', 'Fecha Pago Planilla',
+            'Promesa Gastos Admin', 'Monto Gastos Admin', 'Fecha Pago Gastos Admin', 'Estado Gastos Admin',
+            'Promesa Planilla', 'Monto Planilla', 'Fecha Pago Planilla', 'Estado Planilla',
             'Observaciones'
         ])
         
@@ -1207,7 +1207,9 @@ elif opcion == "📋 Ver Registros":
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: f"S/. {x:,.2f}" if pd.notna(x) and x > 0 else "-")
         
-        st.dataframe(df, use_container_width=True, height=400)
+        # Opción para ajustar la altura dinámicamente
+        altura = min(600, 50 + (len(registros) * 35))
+        st.dataframe(df, use_container_width=True, height=altura)
         
         # Botones de acción
         st.markdown("---")
