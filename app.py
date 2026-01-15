@@ -1177,53 +1177,84 @@ elif opcion == "📋 Ver Registros":
         filtro_tipo = st.radio("Mostrar registros:", ["Hoy", "Por Fecha", "Todos"])
     
     registros = None
+    titulo = ""
     
-    if filtro_tipo == "Hoy":
-        registros = obtener_registros_hoy()
-        st.subheader(f"Registros de {date.today().isoformat()}")
+    try:
+        if filtro_tipo == "Hoy":
+            registros = obtener_registros_hoy()
+            titulo = f"Registros de {date.today().isoformat()}"
+        
+        elif filtro_tipo == "Por Fecha":
+            fecha_seleccionada = st.date_input("Selecciona una fecha")
+            registros = obtener_registros_por_fecha(fecha_seleccionada.isoformat())
+            titulo = f"Registros de {fecha_seleccionada.isoformat()}"
+        
+        else:
+            registros = obtener_todos_registros()
+            titulo = "Todos los registros"
+        
+        st.subheader(titulo)
+        
+        if registros and len(registros) > 0:
+            # Crear DataFrame
+            df = pd.DataFrame(registros, columns=[
+                'ID', 'Fecha Reporte', 'RUC', 'ID Doc', 'Campaña', 'Asesor',
+                'Promesa Gastos Admin', 'Monto Gastos Admin', 'Fecha Pago Gastos Admin', 'Estado Gastos Admin',
+                'Promesa Planilla', 'Monto Planilla', 'Fecha Pago Planilla', 'Estado Planilla',
+                'Observaciones'
+            ])
+            
+            # Formatear montos
+            for col in ['Monto Gastos Admin', 'Monto Planilla']:
+                if col in df.columns:
+                    df[col] = df[col].apply(lambda x: f"S/. {x:,.2f}" if pd.notna(x) and x > 0 else "-")
+            
+            # Mostrar estadísticas
+            st.markdown("---")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total de Registros", len(registros))
+            
+            with col2:
+                ids_texto = ', '.join(map(str, [r[0] for r in registros][:5]))
+                if len(registros) > 5:
+                    ids_texto += "..."
+                st.metric("IDs de Registros", ids_texto)
+            
+            with col3:
+                st.metric("Registros Mostrados", len(df))
+            
+            st.divider()
+            
+            # Mostrar dataframe con scroll
+            st.write("**Tabla de Registros:**")
+            st.dataframe(df, use_container_width=True, hide_index=False)
+            
+            # Botones de acción
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("📥 Descargar como CSV"):
+                    csv = df.to_csv(index=False)
+                    st.download_button(
+                        label="Descargar CSV",
+                        data=csv,
+                        file_name=f"registros_{date.today().isoformat()}.csv",
+                        mime="text/csv"
+                    )
+            
+            with col2:
+                if st.button("🔄 Recargar Datos"):
+                    st.rerun()
+        
+        else:
+            st.warning("⚠️ No hay registros para mostrar con los filtros seleccionados.")
     
-    elif filtro_tipo == "Por Fecha":
-        fecha_seleccionada = st.date_input("Selecciona una fecha")
-        registros = obtener_registros_por_fecha(fecha_seleccionada.isoformat())
-        st.subheader(f"Registros de {fecha_seleccionada.isoformat()}")
-    
-    else:
-        registros = obtener_todos_registros()
-        st.subheader("Todos los registros")
-    
-    if registros:
-        # Los datos ya han sido actualizados por detectar_promesas_caidas() al inicio
-        
-        # Crear DataFrame
-        df = pd.DataFrame(registros, columns=[
-            'ID', 'Fecha Reporte', 'RUC', 'ID Doc', 'Campaña', 'Asesor',
-            'Promesa Gastos Admin', 'Monto Gastos Admin', 'Fecha Pago Gastos Admin', 'Estado Gastos Admin',
-            'Promesa Planilla', 'Monto Planilla', 'Fecha Pago Planilla', 'Estado Planilla',
-            'Observaciones'
-        ])
-        
-        # Formatear montos
-        for col in ['Monto Gastos Admin', 'Monto Planilla']:
-            if col in df.columns:
-                df[col] = df[col].apply(lambda x: f"S/. {x:,.2f}" if pd.notna(x) and x > 0 else "-")
-        
-        # Mostrar estadísticas primero
-        st.markdown("---")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("Total de Registros", len(registros))
-        
-        with col2:
-            st.metric("IDs de Registros", f"{', '.join(map(str, [r[0] for r in registros][:5]))}...")
-        
-        with col3:
-            st.metric("Registros Mostrados", f"{len(df)}")
-        
-        st.divider()
-        
-        # Mostrar dataframe sin límite de altura para ver todos los registros
-        st.dataframe(df, use_container_width=True)
+    except Exception as e:
+        st.error(f"❌ Error al cargar registros: {str(e)}")
+        st.info("Detalles técnicos del error:")
+        st.code(str(e))
         
         # Tabs para Editar y Eliminar
         tab_editar, tab_eliminar = st.tabs(["✏️ Editar Registro", "🗑️ Eliminar Registro"])
